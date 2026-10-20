@@ -22,3 +22,15 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Required build dependencies
+!/gradle/wrapper/gradle-wrapper.jar
+!/libs/sodium-neoforge.jar
+
+# Generated project files
+/.gradle/
+/build/
+/run/
+/logs/
+/.idea/
+/out/

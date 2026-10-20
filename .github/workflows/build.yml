@@ -1,0 +1,47 @@
+name: Manual build JAR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Check required local dependencies
+        shell: pwsh
+        run: |
+          foreach ($file in @('gradle/wrapper/gradle-wrapper.jar', 'libs/sodium-neoforge.jar')) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Required build dependency is missing from the repository: $file"
+            }
+          }
+
+      - name: Build JAR
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon --console=plain build
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v7
+        with:
+          name: TerraVista-JAR-${{ github.run_number }}
+          path: build/libs/*.jar
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
