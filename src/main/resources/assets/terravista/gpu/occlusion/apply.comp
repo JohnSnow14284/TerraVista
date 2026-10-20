@@ -1,0 +1,63 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba8) uniform writeonly restrict image2D colourTexOut;
+layout(binding = 1) uniform sampler2D colourTex;
+layout(binding = 2) uniform sampler2D depthTex;
+
+#include "depth/convention.glsl"
+
+// 使用统一缓冲保存 Vulkan 矩阵参数。
+// 绑定四用于矩阵，零至三用于图像与采样器。
+#ifdef BETTER_SSAO
+layout(binding = 3) uniform sampler2D sourceDepthTex;
+layout(binding = 4, std140) uniform SSAOParams {
+    mat4 Proj;
+    mat4 invProj;
+    mat4 MV;
+    mat4 sourceInvProj;
+};
+#else
+layout(binding = 4, std140) uniform SSAOParams {
+    mat4 MVP;
+    mat4 invMVP;
+};
+#endif
+
+#include "occlusion/reconstruction.glsl"
+#include "occlusion/horizon.glsl"
+
+vec3 face2norm(uint face) {
+    return vec3(uint((face>>1)==2), uint((face>>1)==0), uint((face>>1)==1)) * (float(int(face)&1)*2-1);
+}
+
+void main() {
+    size = imageSize(colourTexOut);
+    if (any(lessThanEqual(size, gl_GlobalInvocationID.xy))) {
+        return;
+    }
+    scale = vec2(1.0f)/size;
+    vec2 point = vec2(vec2(gl_GlobalInvocationID.xy)+0.5f)*scale;// 偏移到纹素中心。
+    float depth = texture(depthTex, point).r;
+    vec4 ocolour = vec4(0);
+    if (depth!=NEAR && depth!=FAR) {
+        vec4 colour = texture(colourTex, point);
+        if (colour == vec4(0.0f, 0.0f, 0.0f, 0.0f)) {
+            ocolour = vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        } else {
+            uint metadata = uint(colour.w*255.0f);
+            uint face = metadata&7u;
+            uint lod = (metadata>>3)&7u;
+            bool hasAO = (metadata&(1<<6))!=0;
+
+            ocolour = colour;
+            ocolour.w = 1.0f;
+
+            if (hasAO) {
+                vec3 worldNormal = face2norm(face);
+                ocolour.rgb *= computeAO(vec3(point, depth), worldNormal);
+            }
+        }
+    }
+    imageStore(colourTexOut, ivec2(gl_GlobalInvocationID.xy), ocolour);
+}

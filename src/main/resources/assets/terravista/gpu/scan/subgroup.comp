@@ -1,0 +1,90 @@
+#version 460
+
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+
+// 通过子组操作执行 Vulkan 排他前缀和。
+
+// 每个调用加载一个四字向量。
+// 在工作组内对二百五十六个向量计算排他前缀和。
+// 先计算向量内部各分量的累计值。
+// 每个调用贡献四个连续输出。
+// 对子组总和执行一次扫描。
+// 通过每子组一个共享槽位累计跨子组前缀。
+// 由单个调用扫描全部子组总和。
+
+#define WORK_SIZE 256
+layout(local_size_x = WORK_SIZE) in;
+
+layout(binding = IO_BUFFER, std430) buffer InputBuffer {
+    uvec4[] ioCount;
+};
+
+shared uint subgroupSums[WORK_SIZE]; // 按最小子组大小一预留共享空间。
+
+#ifdef TRANSLUCENT_DISPATCH_WORD
+layout(binding = 1, std430) buffer DispatchOutput { uint dispatchWords[]; };
+#endif
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    uint localId = gl_LocalInvocationID.x;
+    uint subgroupId = gl_SubgroupID;
+    uint numSubgroups = gl_NumSubgroups;
+
+    uvec4 count = uvec4(0);
+    uint sum = 0;
+    {
+        uvec4 dat = ioCount[gid];
+        count.yzw = dat.xyz;
+        count.z += count.y;
+        count.w += count.z;
+        sum = count.w + dat.w;
+    }
+    // 各调用仅读写自己的四字向量。
+
+    // 对子组总和执行排他扫描。
+    uint subgroupExclusive = subgroupExclusiveAdd(sum);
+
+    // 在部分填充的子组中选择活动调用。
+    uint subgroupTotal = subgroupAdd(sum);
+    if (subgroupElect()) {
+        subgroupSums[subgroupId] = subgroupTotal;
+    }
+
+    // 通过屏障发布工作组内共享写入。
+    barrier();
+
+    // 通过单个写入者避免跨子组竞争。
+    if (localId == 0u) {
+        uint prefix = 0u;
+        for (uint i = 0u; i < numSubgroups; ++i) {
+            uint total = subgroupSums[i];
+            subgroupSums[i] = prefix;
+            prefix += total;
+        }
+    }
+    barrier();
+
+    uint subgroupPrefix = subgroupSums[subgroupId];
+
+    // 合并子组内、跨子组与向量内部前缀。
+    count += subgroupExclusive + subgroupPrefix;
+    ioCount[gid] = count;
+#ifdef TRANSLUCENT_DISPATCH_WORD
+    if (localId == WORK_SIZE - 1u) {
+        uint total = subgroupPrefix + subgroupExclusive + sum;
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD] = (total + 127u) / 128u;
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD + 1] = 1u;
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD + 2] = 1u;
+#ifdef CLEAR_DISPATCH_WORD
+        uint clearCount = min(dispatchWords[3], uint(OPAQUE_CAPACITY))
+                + min(dispatchWords[4], uint(TRANSLUCENT_CAPACITY))
+                + min(dispatchWords[5], uint(TEMPORAL_CAPACITY));
+        dispatchWords[CLEAR_DISPATCH_WORD] = (clearCount + 127u) / 128u;
+        dispatchWords[CLEAR_DISPATCH_WORD + 1] = 1u;
+        dispatchWords[CLEAR_DISPATCH_WORD + 2] = 1u;
+#endif
+    }
+#endif
+}

@@ -1,0 +1,43 @@
+{
+  "required": true,
+  "package": "dev.terravista.mixin",
+  "plugin": "dev.terravista.bootstrap.InjectionSelection",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "minecraft.ClientChunkCacheBridge",
+    "minecraft.ClientBlockCaptureBridge",
+    "minecraft.BeaconStateBridge",
+    "minecraft.DistantCameraBridge",
+    "minecraft.DebugListBridge",
+    "minecraft.FogRenderBridge",
+    "minecraft.CurvedTerrainShaderBridge",
+    "minecraft.ExtractionLifecycleBridge",
+    "minecraft.LevelRenderBridge",
+    "minecraft.GraphicsInitBridge",
+    "minecraft.TerrainPassBridgeMixin",
+    "minecraft.SessionLoginBridge",
+    "minecraft.SessionExitBridge",
+    "minecraft.TaskFailureBridge",
+    "minecraft.LoginFailureBridge",
+    "sodium.ChunkStatusAccess",
+    "sodium.SodiumRendererAccess",
+    "sodium.ChunkQueueBridge",
+    "sodium.VisibleFallbackBridge",
+    "sodium.TerrainFadeBridge",
+    "sodium.CurvedTerrainFrustumBridge",
+    "sodium.SectionManagerBridge",
+    "sodium.SodiumInitBridge",
+    "sodium.OptionIdentityAccess",
+    "sodium.OptionsButtonBridge",
+    "sodium.SodiumDrawBridge",
+    "sodium.VisibleRegionBridge",
+    "vulkan.RecordingCommandAccess",
+    "vulkan.DeviceLifecycleBridge"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

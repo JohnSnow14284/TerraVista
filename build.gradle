@@ -1,0 +1,118 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+def targetJavaVersion = 25
+java { toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion) }
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = targetJavaVersion
+    options.deprecation = true
+}
+
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository { maven { url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
+    maven { url = 'https://maven.caffeinemc.net/releases' }
+}
+
+neoForge {
+    version = project.neoforge_version
+    accessTransformers.from('src/main/resources/META-INF/terravista/injection/access.cfg')
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+    }
+    mods { terravista { sourceSet sourceSets.main } }
+}
+
+configurations {
+    sodiumDistribution
+    terravistaNatives
+    rocksDistribution { transitive = false }
+    runtimeOnly.extendsFrom(terravistaNatives)
+}
+// 提取 Sodium 内嵌 API，开发运行时使用完整发行包。
+def extractSodium = tasks.register('extractSodium', Sync) {
+    from { configurations.sodiumDistribution.collect { zipTree(it) } }
+    include 'META-INF/jarjar/*-mod.jar'
+    eachFile { path = name }
+    includeEmptyDirs = false
+    into layout.buildDirectory.dir('sodium-api')
+}
+
+dependencies {
+    // 使用 Sodium 发行包及其内嵌 API。
+    def sodiumJar = file(project.sodium_jar)
+    if (!sodiumJar.isFile()) {
+        throw new GradleException('Sodium JAR not found: ' + sodiumJar + '. Set -Psodium_jar=/path/to/sodium-neoforge.jar')
+    }
+    def sodiumArtifact = files(sodiumJar)
+    sodiumDistribution sodiumArtifact
+    compileOnly files(fileTree(layout.buildDirectory.dir('sodium-api')) { include '*.jar' }).builtBy(extractSodium)
+    runtimeOnly sodiumArtifact
+    compileOnly "maven.modrinth:lithium:${lithium_version}"
+    compileOnly "maven.modrinth:chunky:${chunky_version}"
+
+    // 使用游戏提供的 Vulkan 绑定，内嵌额外存储绑定。
+    implementation platform('org.lwjgl:lwjgl-bom:3.4.3')
+    for (module in ['lwjgl-lmdb', 'lwjgl-zstd']) {
+        jarJar(implementation("org.lwjgl:${module}:3.4.3"))
+    }
+    for (nativePlatform in ['natives-windows', 'natives-windows-arm64', 'natives-linux', 'natives-linux-arm64', 'natives-macos', 'natives-macos-arm64']) {
+        for (module in ['lwjgl-lmdb', 'lwjgl-zstd']) {
+            terravistaNatives "org.lwjgl:${module}:3.4.3:${nativePlatform}"
+        }
+    }
+    jarJar(implementation('redis.clients:jedis:5.1.0'))
+    jarJar(implementation('org.rocksdb:rocksdbjni:10.2.1'))
+    rocksDistribution 'org.rocksdb:rocksdbjni:10.2.1'
+    jarJar(implementation('org.apache.commons:commons-pool2:2.12.0'))
+    jarJar(implementation('org.lz4:lz4-java:1.8.0'))
+}
+
+// 移除当前平台集合未使用的 RocksDB 原生库。
+def filterRocksNatives = tasks.register('filterRocksNatives', Zip) {
+    from { configurations.rocksDistribution.collect { zipTree(it) } }
+    exclude '*linux32*', '*ppc64le*', '*s390x*', '*riscv64*'
+    archiveFileName = 'rocksdbjni-10.2.1.jar'
+    destinationDirectory = layout.buildDirectory.dir('filtered-libraries')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
+processResources {
+    from('src/main/resources/tv.png') { into 'assets/terravista/ui' }
+    def props = [version: project.version, minecraft_version: minecraft_version,
+                 neoforge_version: neoforge_version]
+    inputs.properties(props)
+    filesMatching('META-INF/neoforge.mods.toml') { expand(props) }
+}
+jar {
+    archiveFileName = "${project.archives_base_name}-${project.version}-${project.minecraft_version}.jar"
+    from(filterRocksNatives.flatMap { it.archiveFile }) { into 'META-INF/jarjar' }
+    eachFile {
+        if (path == 'META-INF/jarjar/rocksdbjni-10.2.1.jar'
+                && file != filterRocksNatives.get().archiveFile.get().asFile) exclude()
+    }
+    from('LICENSE.md') {
+        rename { '许可证.txt' }
+    }
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    manifest.attributes('Implementation-Title': 'TerraVista',
+            'Implementation-Version': project.version.toString(),
+            'Implementation-Vendor': 'JohnSnow')
+    // 内嵌各平台原生资源目录。
+    from({ configurations.terravistaNatives.collect { zipTree(it) } }) {
+        include 'windows/**', 'linux/**', 'macos/**', 'META-INF/windows/**', 'META-INF/linux/**', 'META-INF/macos/**'
+    }
+}
+

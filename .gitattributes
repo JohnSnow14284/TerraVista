@@ -1,0 +1,3 @@
+# 保留文件字节，Shell 包装器使用 LF。
+* -text
+/gradlew text eol=lf

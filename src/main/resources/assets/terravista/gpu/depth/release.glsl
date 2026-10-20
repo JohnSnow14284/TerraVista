@@ -1,0 +1,13 @@
+// 结束当前深度宏作用域。
+#undef TERRAVISTA_DEPTH_CONVENTION
+
+
+#undef REDUCTION
+#undef REDUCTION2
+#undef NEAR
+#undef FAR
+#undef CLOSER_SIGN
+#undef DEPTH_SCALAR_COMPARE
+#undef DEPTH_SCALAR_COMPARE_EQUAL
+#undef USE_ZERO_ONE_DEPTH
+

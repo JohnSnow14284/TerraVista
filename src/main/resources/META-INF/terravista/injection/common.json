@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "dev.terravista.mixin",
+  "plugin": "dev.terravista.bootstrap.InjectionSelection",
+  "compatibilityLevel": "JAVA_25",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "chunky.GeneratedChunkBridge",
+    "minecraft.WorldIdentityBridge"
+  ],
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

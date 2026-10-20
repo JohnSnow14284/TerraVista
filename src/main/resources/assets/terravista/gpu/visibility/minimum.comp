@@ -1,0 +1,101 @@
+#version 460 core
+layout(local_size_x=256) in;
+layout(push_constant) uniform Bounds { uint inputCount; };
+
+#ifdef FIRST_PASS
+#include "format/node.glsl"
+layout(binding=1, std430) readonly buffer Visibility { uint visibility[]; };
+#else
+layout(binding=0, std430) readonly buffer Input { uvec2 inputPairs[]; };
+#endif
+#ifdef FINAL_PASS
+layout(binding=2, std430) writeonly buffer Output { uint outputIds[]; };
+#else
+layout(binding=2, std430) writeonly buffer Output { uvec2 outputPairs[]; };
+#endif
+
+shared uvec2 candidates[512];
+#ifdef FIRST_PASS
+shared uint occupied[256];
+shared uint groupOccupied[16];
+#endif
+bool lessThanPair(uvec2 a, uvec2 b) {
+    return a.x < b.x || (a.x == b.x && a.y < b.y);
+}
+uvec2 loadCandidate(uint index) {
+    if (index >= inputCount) return uvec2(-1);
+#ifdef FIRST_PASS
+    uint age = visibility[index];
+    if (age == uint(-1)) return uvec2(-1);
+    UnpackedNode node;
+    if (unpackNode(node, index) == uvec4(-1) || !hasMesh(node)
+            || isEmptyMesh(node) || node.lodLevel == 4 || hasRequested(node)) return uvec2(-1);
+    return uvec2(age, index);
+#else
+    return inputPairs[index];
+#endif
+}
+void main() {
+    uint lane = gl_LocalInvocationID.x;
+    uint base = gl_WorkGroupID.x * 512u;
+    candidates[lane] = loadCandidate(base + lane);
+#ifdef FIRST_PASS
+    candidates[lane + 256u] = loadCandidate(base + lane + 256u);
+    occupied[lane] = (candidates[lane].y != uint(-1) || candidates[lane + 256u].y != uint(-1)) ? 1u : 0u;
+#else
+    // 反转后半个升序序列以组成双调序列。
+    candidates[lane + 256u] = loadCandidate(base + 511u - lane);
+#endif
+    barrier();
+    // 所有调用均参与每次屏障，最终分支在工作组内一致。
+    // 空块也发布二百五十六个哨兵供后续轮次使用。
+    bool hasCandidates;
+#ifdef FIRST_PASS
+    if (lane < 16u) {
+        uint found = 0u;
+        for (uint i = 0u; i < 16u; i++) found |= occupied[lane + i * 16u];
+        groupOccupied[lane] = found;
+    }
+    barrier();
+    uint found = 0u;
+    for (uint i = 0u; i < 16u; i++) found |= groupOccupied[i];
+    hasCandidates = found != 0u;
+#else
+    // 输入两半均已排序，空哨兵位于末尾。
+    hasCandidates = candidates[0].y != uint(-1) || candidates[511].y != uint(-1);
+#endif
+    if (!hasCandidates) {
+#ifdef FINAL_PASS
+        outputIds[lane] = uint(-1);
+#else
+        outputPairs[gl_WorkGroupID.x * 256u + lane] = uvec2(-1);
+#endif
+        return;
+    }
+    // 每个调用负责一对互不重叠的比较。
+#ifdef FIRST_PASS
+    const uint firstWidth = 2u;
+#else
+    // 仅执行已排序两半的最终合并。
+    const uint firstWidth = 512u;
+#endif
+    for (uint width = firstWidth; width <= 512u; width <<= 1u) {
+        for (uint stride = width >> 1u; stride != 0u; stride >>= 1u) {
+            uint low = (lane / stride) * (stride * 2u) + lane % stride;
+            uint high = low + stride;
+            uvec2 a = candidates[low], b = candidates[high];
+            bool ascending = (low & width) == 0u;
+            if (ascending ? lessThanPair(b, a) : lessThanPair(a, b)) {
+                candidates[low] = b;
+                candidates[high] = a;
+            }
+            barrier();
+        }
+    }
+    // 每组前二百五十六项足以覆盖全局最旧候选。
+#ifdef FINAL_PASS
+    outputIds[lane] = candidates[lane].y;
+#else
+    outputPairs[gl_WorkGroupID.x * 256u + lane] = candidates[lane];
+#endif
+}

@@ -1,0 +1,38 @@
+#version 460 core
+layout(local_size_x=OUTPUT_SIZE) in;
+
+layout(binding = MIN_ID_BUFFER_BINDING, std430) restrict readonly buffer VisibilityDataBuffer {
+    uint minVisIds[OUTPUT_SIZE];
+};
+
+layout(binding = NODE_BUFFER_BINDING, std430) restrict readonly buffer NodeData {
+    uvec4[] nodes;
+};
+
+layout(binding = OUTPUT_BUFFER_BINDING, std430) restrict writeonly buffer OutputBuffer {
+    uvec2 outputBuffer[OUTPUT_SIZE];
+};
+
+layout(binding = VISIBILITY_BUFFER_BINDING, std430) restrict buffer VisibilityBuffer {
+    uint[] visibility;
+};
+
+layout(push_constant) uniform PushConstants { uint visibilityCounter; };
+void main() {
+    uint id = minVisIds[gl_LocalInvocationID.x];
+    if (id == uint(-1)) {
+        outputBuffer[gl_LocalInvocationID.x] = uvec2(-1);
+        return;
+    }
+    uvec4 node = nodes[id];
+    uvec2 res = node.xy;
+    if (all(equal(node, uvec4(-1)))) {// 处理空节点结果。
+        res = uvec2(-1);
+    }
+    outputBuffer[gl_LocalInvocationID.x] = res;// 将节点编号位置写入输出缓冲。
+
+    // 更新可见性值以减少连续重复选择。
+
+    visibility[id] = visibilityCounter + 60;
+
+}

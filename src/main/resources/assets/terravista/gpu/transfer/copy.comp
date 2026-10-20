@@ -1,0 +1,37 @@
+#version 460 core
+#define WORK_SIZE 256
+layout(local_size_x=WORK_SIZE) in;
+
+// 保存拷贝目标、大小与源位置。
+layout(binding = INPUT_HEADER_BUFFER_BINDING, std430) restrict readonly buffer InputHeaderBuffer {
+    uvec4[] dataCopyHeader;
+};
+
+layout(binding = INPUT_DATA_BUFFER_BINDING, std430) restrict readonly buffer InputDataBuffer {
+    uvec2[] dataInBuffer;
+};
+
+layout(binding = OUTPUT_BUFFER_BINDING, std430) restrict writeonly buffer OutputBuffer {
+    uvec2[] outputBuffer;
+};
+
+void main() {
+    uvec4 job = dataCopyHeader[gl_WorkGroupID.x];
+    // 从输入复制到输出。
+    uint src = job.x;
+    uint dst = job.y;
+    uint siz = job.z;
+
+    // 相邻调用在每轮复制相邻四字数据。
+    // 保持暂存读取与设备写入连续。
+#ifdef PARALLEL_COPY
+    uint start = gl_WorkGroupID.y * WORK_SIZE + gl_LocalInvocationID.x;
+    uint stride = WORK_SIZE * gl_NumWorkGroups.y;
+#else
+    uint start = gl_LocalInvocationID.x;
+    uint stride = WORK_SIZE;
+#endif
+    for (uint i = start; i < siz; i += stride) {
+        outputBuffer[dst+i] = dataInBuffer[src+i];
+    }
+}

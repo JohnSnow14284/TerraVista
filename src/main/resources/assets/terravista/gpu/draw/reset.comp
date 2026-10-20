@@ -1,0 +1,18 @@
+#version 450
+layout(binding=0, std430) readonly buffer Counts { uint counts[]; };
+layout(binding=1, std430) writeonly buffer Output { uint outputData[]; };
+layout(local_size_x=128) in;
+void main() {
+    uint opaque=min(counts[3],uint(OPAQUE_CAPACITY));
+    uint translucent=min(counts[4],uint(TRANSLUCENT_CAPACITY));
+    uint temporal=min(counts[5],uint(TEMPORAL_CAPACITY));
+    uint index=gl_GlobalInvocationID.x;
+    if(index>=opaque+translucent+temporal) return;
+    uint command;
+    if(index<opaque) command=index;
+    else if(index<opaque+translucent) command=uint(OPAQUE_CAPACITY)+index-opaque;
+    else command=uint(OPAQUE_CAPACITY+TRANSLUCENT_CAPACITY)+index-opaque-translucent;
+    // 以零实例数禁用绘制，保留其余已有效字段。
+    // 复用槽位时由命令生成器重写全部五个字。
+    outputData[command*5u+1u]=0u;
+}

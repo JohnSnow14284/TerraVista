@@ -1,0 +1,60 @@
+#version 460 core
+
+#define LOCAL_SIZE_MSK ((1<<LOCAL_SIZE_BITS)-1)
+#define LOCAL_SIZE (1<<LOCAL_SIZE_BITS)
+layout(local_size_x=LOCAL_SIZE) in;
+
+#include "visibility/frustum.glsl"
+
+layout(binding = SCENE_UNIFORM_BINDING, std140) uniform SceneUniform {
+    mat4 MVP;
+    ivec3 camSecPos;
+    uint packedHizSize;
+    vec3 camSubSecPos;
+    float minSSS;
+    Frustum frustum;
+    uint renderQueueMaxSize;
+    uint frameId;
+    uint requestQueueSize;
+    float renderDistance;
+    vec2 worldCurveData;
+};
+
+#include "surface/curvature.glsl"
+
+#include "tree/queue.glsl"
+#include "format/node.glsl"
+#include "tree/projection.glsl"
+#include "visibility/node_test.glsl"
+
+layout(binding = REQUEST_QUEUE_BINDING, std430) restrict buffer requestQueueStruct {
+    uvec2 requestQueueIndex;
+    uvec2[] requestQueue;
+};
+
+layout(binding = RENDER_QUEUE_BINDING, std430) restrict buffer renderQueueStruct {
+    uint renderQueueIndex;
+    uint[] renderQueue;
+};
+
+layout(binding = RENDER_TRACKER_BINDING, std430) restrict writeonly buffer renderTrackerArray {
+    uint[] lastRenderFrame;
+};
+
+#include "tree/emit.glsl"
+#include "tree/descent.glsl"
+
+void main() {
+    uint nodeId = getCurrentNode();
+    if (nodeId != SENTINAL_OUT_OF_BOUNDS) {
+        // 读取并解码节点。
+        UnpackedNode node;
+        unpackNode(node, nodeId);
+
+        // 遍历前检查渲染距离。
+        if (isWithinRenderDistance(node)) {
+            traverse(node);
+        }
+
+    }
+}

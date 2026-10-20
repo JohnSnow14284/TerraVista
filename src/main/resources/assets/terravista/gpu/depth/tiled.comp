@@ -1,0 +1,57 @@
+#version 450
+#include "depth/convention.glsl"
+
+// 每个工作组处理六十四乘六十四基础块及其前六级子层。
+// 使用六十四个调用与二千字节共享内存。
+layout(local_size_x=64) in;
+layout(push_constant) uniform TiledParams { int levelCount; };
+layout(binding=0) uniform sampler2D mip_0;
+layout(binding=1, r32f) uniform restrict writeonly image2D mip_1;
+layout(binding=2, r32f) uniform restrict writeonly image2D mip_2;
+layout(binding=3, r32f) uniform restrict writeonly image2D mip_3;
+layout(binding=4, r32f) uniform restrict writeonly image2D mip_4;
+layout(binding=5, r32f) uniform restrict writeonly image2D mip_5;
+layout(binding=6, r32f) uniform restrict writeonly image2D mip_6;
+shared float values[512];
+
+float mip1(ivec2 p) {
+    // 按二次幂基础尺寸确定聚集采样中心。
+    vec4 depths=textureGather(mip_0,(vec2(p*2)+1.0)/vec2(textureSize(mip_0,0)),0);
+    float v=REDUCTION(REDUCTION(depths.x,depths.y),REDUCTION(depths.z,depths.w));
+    if(all(lessThan(p,imageSize(mip_1)))) imageStore(mip_1,p,vec4(v));
+    return v;
+}
+
+void main() {
+    uint id=gl_LocalInvocationID.x;
+    ivec2 tile=ivec2(gl_WorkGroupID.xy);
+    for(uint i=id;i<256u;i+=64u) {
+        ivec2 p=tile*16+ivec2(i%16u,i/16u);
+        ivec2 src=p*2;
+        float a=mip1(src),b=mip1(src+ivec2(1,0));
+        float c=mip1(src+ivec2(0,1)),d=mip1(src+ivec2(1,1));
+        float v=REDUCTION(REDUCTION(a,b),REDUCTION(c,d));
+        values[i]=v;
+        if(all(lessThan(p,imageSize(mip_2)))) imageStore(mip_2,p,vec4(v));
+    }
+    barrier();
+    int readOffset=0;
+    for(int level=3;level<=levelCount;level++) {
+        int width=64>>level;
+        int writeOffset=256-readOffset;
+        if(id<uint(width*width)) {
+            ivec2 local=ivec2(id%uint(width),id/uint(width));
+            int base=readOffset+local.y*4*width+local.x*2;
+            float v=REDUCTION(REDUCTION(values[base],values[base+1]),
+                    REDUCTION(values[base+2*width],values[base+2*width+1]));
+            values[writeOffset+id]=v;
+            ivec2 p=tile*width+local;
+            if(level==3 && all(lessThan(p,imageSize(mip_3)))) imageStore(mip_3,p,vec4(v));
+            if(level==4 && all(lessThan(p,imageSize(mip_4)))) imageStore(mip_4,p,vec4(v));
+            if(level==5 && all(lessThan(p,imageSize(mip_5)))) imageStore(mip_5,p,vec4(v));
+            if(level==6 && all(lessThan(p,imageSize(mip_6)))) imageStore(mip_6,p,vec4(v));
+        }
+        barrier();
+        readOffset=writeOffset;
+    }
+}

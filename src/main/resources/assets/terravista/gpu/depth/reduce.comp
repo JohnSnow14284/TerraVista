@@ -1,0 +1,56 @@
+#version 450 core
+// 保留覆盖目标像素的所有源像素中的最远深度。
+// 非整数缩放在每个轴上最多覆盖三个源像素。
+// 补充采样边缘，避免遗漏最远深度。
+#include "depth/convention.glsl"
+
+layout(local_size_x=8, local_size_y=8) in;
+layout(binding = 0) uniform sampler2D srcLevel;
+layout(binding = 1, r32f) uniform restrict writeonly image2D dstLevel;
+
+layout(push_constant) uniform PushConstants {
+    ivec2 dstSize;
+    ivec2 srcSize;
+};
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(pos, dstSize))) return;
+
+    float res;
+    if (all(equal(srcSize, dstSize))) {
+        // 二次幂源尺寸的基础层直接采样。
+        res = texelFetch(srcLevel, pos, 0).r;
+    } else if (all(equal(srcSize, dstSize * 2))) {
+        // 内部层按精确的二乘二覆盖范围归约。
+        vec4 depths = textureGather(srcLevel, (vec2(pos) + 0.5) / vec2(dstSize), 0);
+        res = REDUCTION(REDUCTION(depths.x, depths.y), REDUCTION(depths.z, depths.w));
+    } else {
+        // 通过整数边界保留部分覆盖的源像素。
+        // 处理仅沿一个方向缩小的细长层。
+        // 按二次幂尺寸使用移位计算覆盖边界。
+        // 保留每个边界像素的覆盖范围。
+        ivec2 shift = findMSB(dstSize);
+        ivec2 first = (pos * srcSize) >> shift;
+        ivec2 end = ((pos + 1) * srcSize + dstSize - 1) >> shift;
+        ivec2 span = end - first;
+        vec4 depths = textureGather(srcLevel, vec2(first + 1) / vec2(srcSize), 0);
+        res = depths.w;
+        if (span.x > 1) res = REDUCTION(res, depths.z);
+        if (span.y > 1) {
+            res = REDUCTION(res, depths.x);
+            if (span.x > 1) res = REDUCTION(res, depths.y);
+        }
+        // 补充聚集采样范围之外的第三行与第三列。
+        if (span.x == 3) {
+            res = REDUCTION(res, texelFetch(srcLevel, first + ivec2(2, 0), 0).r);
+            if (span.y > 1) res = REDUCTION(res, texelFetch(srcLevel, first + ivec2(2, 1), 0).r);
+        }
+        if (span.y == 3) {
+            res = REDUCTION(res, texelFetch(srcLevel, first + ivec2(0, 2), 0).r);
+            if (span.x > 1) res = REDUCTION(res, texelFetch(srcLevel, first + ivec2(1, 2), 0).r);
+            if (span.x == 3) res = REDUCTION(res, texelFetch(srcLevel, first + ivec2(2, 2), 0).r);
+        }
+    }
+    imageStore(dstLevel, pos, vec4(res));
+}

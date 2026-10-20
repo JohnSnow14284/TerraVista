@@ -1,0 +1,40 @@
+#version 460 core
+
+layout(local_size_x=128) in;
+
+// 每块保存四个目标位置及四份四字数据。
+// 每块占五个四字向量，共八十字节。
+layout(binding = INPUT_BUFFER_BINDING, std430) restrict readonly buffer InputBuffer {
+    uvec4[] inData;
+};
+
+layout(binding = OUTPUT_BUFFER1_BINDING, std430) restrict writeonly buffer OutputBuffer1 {
+    uvec4[] output1;
+};
+
+layout(binding = OUTPUT_BUFFER2_BINDING, std430) restrict writeonly buffer OutputBuffer2 {
+    uvec4[] output2;
+};
+
+layout(push_constant) uniform PushConstants { uint count; };
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (count <= id) {
+        return;
+    }
+    uint chunkBase = (id>>2u)*5u;
+    uint innerId = id&3u;
+
+    uint writeLocation = inData[chunkBase][innerId];// 按内部编号选择目标位置。
+    uvec4 writeData = inData[chunkBase+1+innerId];// 跳过目标位置头后读取对应数据。
+
+    uint writeBuffer = writeLocation>>31;// 以最高位选择输出缓冲。
+    writeLocation &= (1u<<31)-1;// 清除缓冲选择位。
+
+    if (writeBuffer == 0) {// 写入第一个缓冲。
+        output1[writeLocation] = writeData;
+    } else {// 写入第二个缓冲。
+        output2[writeLocation] = writeData;
+    }
+}

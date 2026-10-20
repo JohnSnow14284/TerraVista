@@ -1,0 +1,68 @@
+#version 460 core
+// 通过全局插入选择最旧的可见性候选。
+
+layout(local_size_x=WORK_SIZE, local_size_y=1) in;
+layout(push_constant) uniform ScanBounds { uint nodeCount; };
+
+#include "format/node.glsl"
+
+layout(binding = VISIBILITY_BUFFER_BINDING, std430) restrict readonly buffer VisibilityDataBuffer {
+    uint[] visibility;
+};
+
+layout(binding = OUTPUT_BUFFER_BINDING, std430) restrict buffer MinimumVisibilityBuffer {
+    uint minVisIds[OUTPUT_SIZE];
+};
+
+uint atomicDerefMaxExchangeGlobal(uint atId, uint id) {
+    const uint value = visibility[id];
+    // 对并发更新的候选数组执行原子访问。
+    uint existingId = atomicAdd(minVisIds[atId], 0u);
+    while (true) {
+        if (existingId == id) {
+            return uint(-1);
+        }
+        if (existingId != uint(-1) && visibility[existingId] <= value) {
+            return id;
+        }
+        const uint previous = atomicCompSwap(minVisIds[atId], existingId, id);
+        if (previous == existingId) {
+            return existingId;
+        }
+        // 复用失败比较交换返回的当前值。
+        existingId = previous;
+    }
+}
+
+void bubbleSortGlobal(uint id) {
+    for (uint i = 0; i < OUTPUT_SIZE; i++) {
+        id = atomicDerefMaxExchangeGlobal(i, id);
+        if (id == uint(-1)) {
+            break;
+        }
+    }
+}
+
+bool shouldSortId(uint id) {
+    UnpackedNode node;
+    if (unpackNode(node, id) == uvec4(-1)) return false;
+    if (isEmptyMesh(node) || !hasMesh(node)) return false;
+    if (node.lodLevel == 4) return false;
+    return !hasRequested(node);
+}
+
+void main() {
+    for (uint i = 0; i < ELEMS_PER_THREAD; i++) {
+        // 相邻调用读取相邻的可见性与节点条目。
+        // 保持工作组访问范围连续。
+        uint id = gl_WorkGroupID.x * (WORK_SIZE * ELEMS_PER_THREAD)
+                + i * WORK_SIZE + gl_LocalInvocationID.x;
+        if (id >= nodeCount) break;
+        uint vis = visibility[id];
+        if (vis == uint(-1)) continue;
+        if (!shouldSortId(id)) continue;
+        uint lastId = atomicAdd(minVisIds[OUTPUT_SIZE - 1], 0u);
+        if (lastId != uint(-1) && visibility[lastId] <= vis) continue;
+        bubbleSortGlobal(id);
+    }
+}

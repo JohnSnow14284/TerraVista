@@ -1,0 +1,71 @@
+#version 460
+#define WORK_SIZE 256
+
+// 按工作组批次计算并行前缀和。
+layout(local_size_x=WORK_SIZE) in;
+
+layout(binding = IO_BUFFER, std430) buffer InputBuffer {
+    uvec4[] ioCount;
+};
+
+shared uint prefixSum[256];
+
+#ifdef TRANSLUCENT_DISPATCH_WORD
+layout(binding = 1, std430) buffer DispatchOutput { uint dispatchWords[]; };
+#endif
+
+#define STEP(i)  if ((I&(1u<<i))!=0) prefixSum[I] += prefixSum[(I&~((1u<<(i+1))-1))+((1u<<i)-1)];
+uint prefixSumExclusive(uint value) {
+    uint I = gl_LocalInvocationID.x;
+    prefixSum[I] = value;
+    barrier();
+    STEP(0)
+    barrier();
+    STEP(1)
+    barrier();
+    STEP(2)
+    barrier();
+    STEP(3)
+    barrier();
+    STEP(4)
+    barrier();
+    STEP(5)
+    barrier();
+    STEP(6)
+    barrier();
+    STEP(7)
+    barrier();
+    return prefixSum[I]-value;
+}
+
+void main() {
+    uint gid = gl_LocalInvocationID.x;
+    uvec4 count = uvec4(0);
+    uint sum = 0;
+    {
+        uvec4 dat = ioCount[gid];
+        count.yzw = dat.xyz;
+        count.z += count.y;
+        count.w += count.z;
+        sum = count.w + dat.w;
+    }
+    // 在首次屏障前初始化全部共享槽位。
+    uint prefix = prefixSumExclusive(sum);
+    count += prefix;
+    ioCount[gid] = count;
+#ifdef TRANSLUCENT_DISPATCH_WORD
+    if (gid == WORK_SIZE - 1u) {
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD] = (prefix + sum + 127u) / 128u;
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD + 1] = 1u;
+        dispatchWords[TRANSLUCENT_DISPATCH_WORD + 2] = 1u;
+#ifdef CLEAR_DISPATCH_WORD
+        uint clearCount = min(dispatchWords[3], uint(OPAQUE_CAPACITY))
+                + min(dispatchWords[4], uint(TRANSLUCENT_CAPACITY))
+                + min(dispatchWords[5], uint(TEMPORAL_CAPACITY));
+        dispatchWords[CLEAR_DISPATCH_WORD] = (clearCount + 127u) / 128u;
+        dispatchWords[CLEAR_DISPATCH_WORD + 1] = 1u;
+        dispatchWords[CLEAR_DISPATCH_WORD + 2] = 1u;
+#endif
+    }
+#endif
+}
