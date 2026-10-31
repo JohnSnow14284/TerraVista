@@ -17,6 +17,18 @@ when Vitrail is present, retaining ordinary passes when absent. The optional met
 is resolved once, before acquiring the first replacement pass; failed registration closes
 the acquired pass. No Vitrail code or binaries are bundled.
 
+The packed distant vertex adapter now produces the inputs Vitrail's DH shader translation expects
+from TerraVista's existing buffers. It reuses the ordinary fluid/surface geometry decoder, returns
+camera-relative block coordinates before the pack's matrices and jitter, and supplies unlit colour,
+normal, normalized block/sky light and DH material category. The existing 64-byte model record's
+last 28 bytes hold six face colours and a material category; geometry remains 8 bytes per quad.
+Those fields are baked only when Vitrail is installed. Material category participates in model
+deduplication so two visually identical models with different pack semantics cannot alias.
+
+Shared shader globals and include macros are isolated from the pack's namespace. This adapter is
+not yet installed into the live Vitrail draw path: shader program construction, descriptor binding,
+indirect submission, distant projection/depth and opaque/translucent scheduling remain to connect.
+
 ## Evidence and remaining requirements
 
 - New TerraVista bridge and its caller compile directly against existing local game dependencies.
@@ -34,6 +46,22 @@ the acquired pass. No Vitrail code or binaries are bundled.
   class was compiled against an interface with only the added viewport member removed, then run
   against the actual current game interface. Viewport state logic was tested separately; this
   is not evidence that the Mixin transformed a real running Vitrail instance successfully.
+- Repeated the pass contract check against the actual built upstream NeoForge JAR; it passed.
+- CPU checks passed for unlit linear colour averaging, transparent cutout holes, translucent
+  intrinsic alpha, the 64-byte model layout and material-aware deduplication. The additional work
+  occurs during model baking, not per frame; its in-game loading cost has not been measured.
+- Shaderc compiled 24 packed-input variants using the real upstream distant prologue, including
+  optional colour/normal/material inputs, int/uint/float material declarations and conflicting
+  pack identifiers/macros. Ordinary terrain SPIR-V remains byte-identical to the pre-adapter
+  baseline with optimization both disabled and enabled.
+- An external probe substituted the adapter into upstream's distant prologue while translating
+  the real Complementary Unbound r5.9.3 archive. Both opaque and water vertex stages compiled to
+  Vulkan SPIR-V. This was an off-game translation probe, not a game or graphics-device draw.
+  Inspection of all three compiled modules confirmed no location-based vertex inputs and the
+  original 64-byte model stride, with face colours at byte 36 and material at byte 60.
+- Face colour is a flat LOD approximation. Conditional tint masks currently tint the averaged
+  face as a whole; material classification covers common vanilla categories and falls back to
+  unknown for other blocks. Validate mixed-tint faces and modded materials before release.
 - In-game Mixin application, pass reopening and shader reload remain required.
 - LOD colour, material and depth must reach Vitrail's shader programs at the correct opaque /
   translucent stages. Merely compositing TerraVista's vanilla-lit colour onto the main target

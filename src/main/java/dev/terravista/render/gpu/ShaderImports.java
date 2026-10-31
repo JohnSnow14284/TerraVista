@@ -15,7 +15,12 @@ public final class ShaderImports {
     private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([a-z0-9_/-]+\\.[a-z]+)\"");
 
     public static String expand(ShaderProgram program) {
-        return "#version 460 core\n" + String.join("\n", expand(program.path, new ArrayDeque<>()));
+        return "#version 460 core\n" + module(program.path);
+    }
+
+    /** An include body for a shader owned by another renderer, without a second version directive. */
+    public static String module(String path) {
+        return String.join("\n", expand(path, new ArrayDeque<>()));
     }
 
     private static List<String> expand(String path, ArrayDeque<String> chain) {
