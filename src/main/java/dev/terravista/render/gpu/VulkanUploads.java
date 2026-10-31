@@ -15,6 +15,7 @@ public class VulkanUploads extends UploadStream {
         commands.retirement().addListener(this::retired);
     }
     public long stagingBuffer() { return staging.handle(); }
+    GpuBuffer stagingOwner() { return staging.owner(); }
     @Override public long upload(DeviceBuffer target, long destinationOffset, long bytes) {
         long address = rawUploadAddress((int) bytes);
         copies.add((GpuBuffer) target, address, destinationOffset, bytes);

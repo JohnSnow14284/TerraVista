@@ -38,7 +38,7 @@ final class FrameStages {
         this.models = models;
     }
 
-    void record(FrameAttachments frame) {
+    boolean record(FrameAttachments frame, boolean packed) {
         var view = frame.view();
         composite.initialize(frame);
         bounds.record(view, visible);
@@ -52,7 +52,12 @@ final class FrameStages {
         cleaner.processFrame(traversal.nodes());
         traversal.record(view);
         terrain.build(view);
-        if (!CompositePass.hiddenByFog(view)) {
+        boolean water = false;
+        if (packed) {
+            // The pack draws both generated batches. The private depth image is only read above,
+            // so filling it with the new temporal batch here would repeat unused geometry work.
+            water = terrain.packed(view, false);
+        } else if (!CompositePass.hiddenByFog(view)) {
             terrain.temporal(view);
             occlusion.record(view, frame.depth());
             terrain.translucent(view);
@@ -63,5 +68,8 @@ final class FrameStages {
         var pressure = ClientOptions.CONFIG.pressure();
         radius.process(view.state.cameraX, view.state.cameraZ, pressure.rootColumns);
         models.tick(pressure.modelNanos);
+        return water;
     }
+
+    void water(VulkanViewTargets view) { terrain.packed(view, true); }
 }

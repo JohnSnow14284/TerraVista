@@ -12,7 +12,7 @@ public final class VitrailPackedPrograms {
     // DH owns the upstream distant family when present. Do not reinterpret its vertex buffers.
     public static final boolean ENABLED = RuntimeEnvironment.modLoaded("vitrail")
             && !RuntimeEnvironment.modLoaded("distanthorizons");
-    public static final String ABI = "1";
+    public static final String ABI = "2";
     private static final List<String> BLOCKS = List.of("TerraVistaScene", "TerraVistaQuads",
             "TerraVistaModels", "TerraVistaColours", "TerraVistaPositions");
 
@@ -24,6 +24,12 @@ public final class VitrailPackedPrograms {
         } catch (Throwable failure) {
             throw new IllegalStateException("TerraVista: cannot identify Vitrail shader inputs", failure);
         }
+    }
+
+    public static boolean distantProgram(Object program) {
+        try { return Api.INPUTS.invoke(program).toString().equals("DISTANT"); }
+        catch (RuntimeException | Error failure) { throw failure; }
+        catch (Throwable failure) { throw new IllegalStateException("TerraVista: cannot identify Vitrail shader inputs", failure); }
     }
 
     public static List<String> storage(List<String> original) {

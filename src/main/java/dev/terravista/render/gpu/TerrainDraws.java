@@ -1,6 +1,10 @@
 package dev.terravista.render.gpu;
 
 import com.mojang.renderpearl.backend.vulkan.VulkanGpuTextureView;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import dev.terravista.compat.VitrailBuffers;
+import dev.terravista.compat.VitrailIndirect;
+import dev.terravista.compat.VitrailLods;
 import dev.terravista.render.DepthConvention;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.vulkan.*;
@@ -10,7 +14,7 @@ import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.vkCmdDrawIndexedIndirectCount;
 
 /** 连接地形命令生成、三类绘制及资源生命周期。 */
-public final class TerrainDraws {
+public final class TerrainDraws implements VitrailLods.Draw {
     private final FrameCommands commands;
     private final VulkanUploads uploads;
     private final GpuGeometryTable geometry;
@@ -20,6 +24,10 @@ public final class TerrainDraws {
     private final TerrainPipelines pipelines;
     private final TerrainCommands generation;
     private final TerrainMaterials materials;
+    private VitrailBuffers packedBindings;
+    private VitrailIndirect packedIndirect;
+    private VulkanViewTargets packedView;
+    private boolean packedWater;
 
     public TerrainDraws(FrameCommands commands, VulkanUploads uploads, VulkanReadbacks readbacks,
                         DepthConvention convention, GpuGeometryTable geometry, GpuModelTable models) {
@@ -62,6 +70,43 @@ public final class TerrainDraws {
         int capacity = Math.min(geometry.size(), VulkanViewTargets.TRANSLUCENT_CAPACITY);
         draw(view, view.attachments.shadedColour.view, materials.translucent,
                 TerrainPipelines.TRANSLUCENT_OFFSET * 20L, 16, generation.translucentBudget(capacity));
+    }
+
+    boolean packed(VulkanViewTargets view, boolean water) {
+        if (geometry.size() == 0) return false;
+        if (packedBindings == null) {
+            packedBindings = new VitrailBuffers();
+            packedIndirect = new VitrailIndirect();
+        }
+        commands.computeToDraw();
+        scene.ensureLive(uploads, view);
+        scene.bind(packedBindings);
+        packedBindings.set(VitrailBuffers.Slot.QUADS, geometry.geometryBuffer(), 0, geometry.geometryBuffer().sizeBytes());
+        packedBindings.set(VitrailBuffers.Slot.MODELS, models.models, 0, models.models.sizeBytes());
+        packedBindings.set(VitrailBuffers.Slot.COLOURS, models.colours, 0, models.colours.sizeBytes());
+        packedBindings.set(VitrailBuffers.Slot.POSITIONS, view.positionScratch, 0, view.positionScratch.sizeBytes());
+        packedView = view;
+        packedWater = water;
+        packedBindings.activate();
+        try { return VitrailLods.draw(water, this); }
+        finally { packedBindings.deactivate(); packedView = null; }
+    }
+
+    @Override public void record(RenderPass pass) {
+        VitrailBuffers.bindSection(pass);
+        var view = packedView;
+        if (packedWater) {
+            int capacity = Math.min(geometry.size(), VulkanViewTargets.TRANSLUCENT_CAPACITY);
+            packedIndirect.submit(pass, buffers.indices, view.drawCalls, view.drawCounts,
+                    TerrainPipelines.TRANSLUCENT_OFFSET * 20L, 16, generation.translucentBudget(capacity), commands.device().indirectCount);
+        } else {
+            int capacity = Math.min(geometry.size() * 7, VulkanViewTargets.OPAQUE_CAPACITY);
+            packedIndirect.submit(pass, buffers.indices, view.drawCalls, view.drawCounts,
+                    0, 12, generation.opaqueBudget(capacity), commands.device().indirectCount);
+            capacity = Math.min(geometry.size() * 7, VulkanViewTargets.TEMPORAL_CAPACITY);
+            packedIndirect.submit(pass, buffers.indices, view.drawCalls, view.drawCounts,
+                    TerrainPipelines.TEMPORAL_OFFSET * 20L, 20, generation.temporalBudget(capacity), commands.device().indirectCount);
+        }
     }
 
     private void draw(VulkanViewTargets view, long colour, DevicePipeline pipeline,

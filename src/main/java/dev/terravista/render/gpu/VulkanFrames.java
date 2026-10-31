@@ -2,6 +2,7 @@ package dev.terravista.render.gpu;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import dev.terravista.bootstrap.ModLog;
+import dev.terravista.compat.VitrailLods;
 import dev.terravista.config.ClientOptions;
 import dev.terravista.mesh.MeshBuildQueue;
 import dev.terravista.model.ModelBakingService;
@@ -26,6 +27,7 @@ import java.util.List;
 
 /** 持有世界渲染资源，连接宿主帧入口与构造、退出生命周期。 */
 public final class VulkanFrames {
+    private boolean pendingWater;
     private final VoxelWorld world;
     private final FrameCommands commands;
     private final VulkanUploads uploads;
@@ -149,6 +151,7 @@ public final class VulkanFrames {
     /** 更新相机与附件，并在宿主命令缓冲内执行本帧。 */
     public void record(RenderTarget target, MinecraftDeviceAdapter adapter, ChunkRenderMatrices matrices,
                        double x, double y, double z) {
+        translucent(adapter, false);
         var frameCommand = adapter.frameCommandBuffer();
         if (frameCommand == null) {
             ModLog.warn("Render: TerraVista VK: no frame command buffer at hook point, skipping frame");
@@ -157,6 +160,8 @@ public final class VulkanFrames {
         var camera = Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
         if (camera == null || !camera.initialized) return;
         distance(ClientOptions.CONFIG.renderDistanceChunks(Minecraft.getInstance().options.getEffectiveRenderDistance()) / 32f);
+        boolean packed = VitrailLods.active();
+        VitrailLods.suspend();
         commands.flushImmediate();
         commands.beginFrame(frameCommand);
         try {
@@ -171,8 +176,28 @@ public final class VulkanFrames {
             view.state.frame++;
             if (view.state.width <= 0 || view.state.height <= 0) return;
             view.ensureTargets();
-            stages.record(new FrameAttachments(view, target.getColorTextureView(), target.getDepthTextureView(),
-                    target.width, target.height));
+            pendingWater = stages.record(new FrameAttachments(view, target.getColorTextureView(), target.getDepthTextureView(),
+                    target.width, target.height), packed);
+        } finally {
+            commands.endFrame(pendingWater);
+            commands.retirement().poll();
+        }
+    }
+
+    public void translucent(MinecraftDeviceAdapter adapter, boolean draw) {
+        if (!pendingWater) return;
+        pendingWater = false;
+        VitrailLods.suspend();
+        var command = adapter.frameCommandBuffer();
+        if (command == null) {
+            // A world transition can skip the later phase. GPU idle is required before reclaiming
+            // upload ranges whose deferred event was never recorded.
+            commands.waitIdleAndRetire();
+            return;
+        }
+        commands.beginFrame(command);
+        try {
+            if (draw && VitrailLods.active()) stages.water(view);
         } finally {
             commands.endFrame();
             commands.retirement().poll();

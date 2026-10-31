@@ -37,9 +37,19 @@ public final class TerrainPassBridge {
     }
 
     public static void finishTranslucent() {
+        translucent(false);
         capturedMatrices = null;
         origin = null;
         submitted = false;
+    }
+
+    public static void submitTranslucent() { translucent(true); }
+
+    private static void translucent(boolean draw) {
+        if (AdoptedDevice.current() instanceof MinecraftDeviceAdapter adapter) {
+            var session = RenderSessionAccess.current();
+            if (session != null && session.hasFrameResources()) session.translucent(adapter, draw);
+        }
     }
 
     private TerrainPassBridge() {}

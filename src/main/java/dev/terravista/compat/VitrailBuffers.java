@@ -95,6 +95,10 @@ public final class VitrailBuffers {
         return binding == null ? null : binding.bound;
     }
 
+    public static void bindSection(RenderPass pass) {
+        pass.setUniform("OfDistantSection", binding("TerraVistaScene").slice);
+    }
+
     public static void bind(RenderPass pass, List<String> names) {
         for (String name : names) {
             Binding binding = binding(name);

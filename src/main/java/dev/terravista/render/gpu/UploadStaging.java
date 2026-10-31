@@ -38,6 +38,7 @@ final class UploadStaging {
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
     }
     long handle() { return buffer.buffer; }
+    GpuBuffer owner() { return buffer; }
     long pointer() { return pointer; }
     void resetRange() { current = -1; offset = 0; }
 

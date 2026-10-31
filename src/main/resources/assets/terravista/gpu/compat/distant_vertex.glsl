@@ -46,7 +46,10 @@ TerraVistaDistantVertex terravistaDistantVertex() {
     setupQuad(quad, raw, positionBuffer[gl_InstanceIndex], false);
 
     TerraVistaDistantVertex vertex;
-    vertex.position = getQuadCornerPos(quad, uint(gl_VertexIndex) & 3u);
+    // Native terrain draws both windings. Pack pipelines cull outward-facing DH triangles.
+    uint corner = uint(gl_VertexIndex) & 3u;
+    if (face == 0u || face == 3u || face == 5u) corner ^= 1u;
+    vertex.position = getQuadCornerPos(quad, corner);
     vertex.colour = unpackUnorm4x8(model.distantColour[face]);
     uint tint = model.colourTint;
     if (modelHasBiomeLUT(model)) {
