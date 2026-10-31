@@ -11,16 +11,17 @@ This branch implements the Vulkan row in TerraVista. The Vitrail repository and 
 source are not patched; TerraVista adapts its own LOD buffers, indirect commands, depth contract,
 and frame lifetime to Vitrail's existing distant passes.
 
-Status: in development. Complementary and Bliss distant programs render packed LODs in real Vulkan
-worlds. A legacy pack without distant programs also renders through the basic-colour fallback.
-Shader toggles, scaling and resource reloads passed; performance acceptance, wider pack/settings
-coverage and world-transition coverage remain incomplete.
+Status: implementation branch. Complementary and Bliss distant programs render packed LODs in real
+Vulkan worlds. A legacy pack without distant programs also renders through the basic-colour
+fallback. Shader toggles, scaling, resource reloads and staging-bank rotation passed on the RTX
+4070 Ti SUPER; performance acceptance, wider pack/settings coverage and world-transition coverage
+remain incomplete.
 
 Reference: https://github.com/avpbynf/Vitrail-Shaders
 
 Inspected upstream: `7a3cdcbe1dfd7e04fb2b3021ee8352d341e7647e`, Vitrail 0.13.0-beta.
 Host: Minecraft 26.3, NeoForge 26.3.0.76, Sodium 0.9.3, Java 25.
-Branch: `feat/vitrail-shaders`.
+Branch: `feat/vitrail-vulkan-tv-rework`.
 
 ## Rendering path
 
@@ -97,9 +98,9 @@ Those LODs do not enter the pack's deferred lighting, reflections or distant-sha
   geometry allocations. A client without Vitrail also booted, skipped optional hooks and preserved
   raw pass identity. These startup checks did not open worlds.
 - A copied world ran Complementary Unbound r5.9.3 for about a minute, moved the player through four
-  locations, exercised a water fixture and exited normally. The latest accepted rendering run
-  recorded 6,324 opaque and 6,324 water passes, 18,972 native indirect fallback calls, and 133,382
-  non-clear pixels in the actual GPU distant-depth image. Mesh queue failures were zero. TerraVista live-buffer
+  locations, exercised a water fixture and exited normally. The current branch run recorded 6,077
+  opaque and 6,077 water passes, 18,231 counted indirect calls, and 133,276 non-clear pixels in
+  the actual GPU distant-depth image. Mesh queue failures were zero. TerraVista live-buffer
   counters were stable at 27 / 2,367,889,532 bytes in that fixture; these are TerraVista buffer
   counters, not whole-device VRAM measurements.
 - The first host runs exercised ordinary indirect fallback. The integration now requests
@@ -107,11 +108,12 @@ Those LODs do not enter the pack's deferred lighting, reflections or distant-sha
   devices retain the fallback; the draw remains gated by the logical device's actual enabled set.
   The RTX 4070 Ti SUPER then enabled it and recorded 25,404 counted calls with zero fallback calls
   in a complete lifecycle run. This also bypasses fallback count readback and command clearing.
-- Two lifecycle runs exercised shaders off/on, SDL window resize, 75% rendering at 864x486 and
-  restoration to 1152x648, followed by a resource reload. Packed opaque/water draws resumed; the
-  ordinary renderer handled the shaders-off phase. Real distant-depth pixels remained nonzero
+- The current lifecycle run exercised shaders off/on, SDL window resize, 75% rendering at 864x486
+  and restoration to 1152x648, followed by a resource reload. Packed opaque/water draws resumed;
+  the ordinary renderer handled the shaders-off phase. Real distant-depth pixels remained nonzero
   after resizing and reload, mesh failures were zero, and a probe observed zero private temporal
-  draws while packed rendering was active. TerraVista live-buffer counters returned to 27 / 2,367,889,532 bytes.
+  draws while packed rendering was active. The run recorded 11,238 counted calls and zero fallback
+  calls; TerraVista live-buffer counters returned to 27 / 2,367,889,532 bytes.
   A transient host swapchain-out-of-date exception during resize recovered on the next frame.
 - A bounded stress probe forced staging-bank rotation once before opaque and once before water.
   Both draws rasterized, and toggles, resize and resource reload passed again (11,832 counted
