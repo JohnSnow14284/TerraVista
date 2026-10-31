@@ -3,6 +3,7 @@ package dev.terravista.render;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.commands.RenderPass;
+import dev.terravista.compat.VitrailPasses;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
@@ -58,9 +59,11 @@ public final class TerrainPasses {
 
     private static RenderPass mainPass(String name) {
         var target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-        return RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+        java.util.function.Supplier<RenderPass> reopen = () -> RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> name, target.getColorTextureView(), Optional.empty(),
                 target.getDepthTextureView(), OptionalDouble.empty());
+        return VitrailPasses.open(target.getColorTextureView(),
+                target.getDepthTextureView(), reopen);
     }
 
     private TerrainPasses() {}
