@@ -45,6 +45,14 @@ skipped phases cancel safely, and a missing frame command during a transition wa
 If tree/model uploads rotate the staging bank before either packed pass, its scene parameters are
 republished into the current live bank before borrowing the buffer.
 
+Bulk tree and model uploads check their aligned staging budget before consuming queued CPU results.
+A pressured tree delta retains its geometry, roots, metadata and cleaner operations together, then
+resumes in FIFO order; shutdown frees any retained CPU allocation. Model and blended-colour queues
+also keep deferred work. One MiB remains reserved for frame parameters and the later water pass.
+The initial 64 MiB bank grows only for a larger atomic batch, up to 256 MiB per bank with at most
+four banks. Requests beyond that per-batch bound are rejected explicitly. The ordinary ready path
+adds no native event query and reuses its publication callback.
+
 With an active pack, TerraVista's vanilla-lit final composite and SSAO are skipped. Its ordinary
 opaque prepass still supplies traversal depth. The private temporal draw is omitted because its
 depth would not be consumed: both batches are drawn through the pack instead. Reusing the pack's
@@ -88,6 +96,12 @@ installed; the combined TerraVista + DH rendering case has not been accepted.
 - A bounded stress probe forced staging-bank rotation once before opaque and once before water.
   Both draws rasterized, and toggles, resize and resource reload passed again (11,832 counted
   calls, zero fallback calls, 192,984 non-clear distant-depth pixels after reload).
+- Backpressure checks cover 20,000 fragmented allocator states against an independent byte-map
+  oracle, atomic deferred tree publication/FIFO/cleanup, and model/biome upload budgets at four
+  alignments. A real-world budget-boundary probe deferred tree work and later resumed it without
+  forced idle or allocation failure. An 80 MiB staging request grew one bank to 128 MiB; invalid
+  negative/over-limit requests were rejected. A separate run copied those 80 MiB on the GPU and
+  verified distinct markers at the start, middle and end through asynchronous GPU readback.
 - The original test-world files retained their recorded hashes. Probes, screenshots and logs live
   outside the repository under `D:/MCMod/项目资料/TerraVista/vitrail-adaptation/`. GPU depth readback
   enabled COPY_SRC only in the probe; it is not a product texture or copy cost.
@@ -98,10 +112,9 @@ installed; the combined TerraVista + DH rendering case has not been accepted.
   was affected by inactivity limiting and is not a performance result.
 - Exercise another supported pack, world transitions and sustained travel. The isolated fixture
   disabled NeoForge's early loading window after an upstream OpenGL handoff failure; ordinary launcher behavior still needs checking.
-- Address upload backpressure beyond the existing four-bank capacity. An artificial probe that
-  repeatedly filled entire 64 MiB banks in the same unsubmitted frame exhausted that cap; device
-  idle cannot reclaim allocations still referenced by the unsubmitted command buffer. Bounded
-  rotation passed, but capacity exhaustion is not accepted as stable.
+- Measure sustained upload pressure and peak staging/VRAM use in a heavier world. The bounded
+  bank policy now defers bulk producers; bypassing that policy with unguarded low-level raw
+  allocations can still exhaust the allocator, and a single batch larger than 255 MiB is rejected.
 - Validate winding and depth seams in more views, mixed-tint faces, modded materials and water from
   both sides. Face colours are flat LOD approximations; conditional tint currently applies to the
   averaged face as a whole. Unclassified blocks use the unknown material category.

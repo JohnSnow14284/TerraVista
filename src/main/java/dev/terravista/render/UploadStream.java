@@ -14,6 +14,8 @@ public abstract class UploadStream {
         return baseAddress() + offset;
     }
     public abstract long rawUploadAddress(int bytes);
+    /** Bulk producers leave their queued CPU result untouched when staging is under pressure. */
+    public boolean canUpload(long bytes) { return true; }
     public abstract void commit();
     public abstract void tick();
     public abstract long baseAddress();

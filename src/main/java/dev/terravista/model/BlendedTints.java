@@ -66,7 +66,9 @@ public final class BlendedTints {
     boolean upload(ModelStore store) {
         boolean changed = false;
         int[] entry;
-        while ((entry = pending.poll()) != null) {
+        var stream = UploadStream.current();
+        while (pending.peek() != null && stream.canUpload(stream.alignAllocation(4))
+                && (entry = pending.poll()) != null) {
             MemoryUtil.memPutInt(UploadStream.current().upload(store.colourBuffer(), (BASE + entry[0]) * 4L, 4), entry[1]);
             changed = true;
         }

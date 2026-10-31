@@ -3,6 +3,7 @@ package dev.terravista.model;
 import dev.terravista.bootstrap.ModLog;
 import dev.terravista.compat.VitrailPackedPrograms;
 import dev.terravista.config.ClientOptions;
+import dev.terravista.render.UploadStream;
 import dev.terravista.world.BiomePaletteEntry;
 import dev.terravista.world.StatePalette;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -220,15 +221,20 @@ public final class ModelCatalog {
     }
     public void upload() {
         boolean blended = blendedTints.upload(storage);
-        var result = uploads.poll();
-        if (result == null) { if (blended) storage.finish(); return; }
+        var stream = UploadStream.current();
+        var result = uploads.peek();
+        if (result == null || !stream.canUpload(result.stagingBytes(stream.baseAlignment()))) {
+            if (blended) storage.finish();
+            return;
+        }
         storage.beginTextures();
         try {
             do {
+                result = uploads.poll();
                 try { result.upload(storage); }
                 finally { result.free(); }
-                result = uploads.poll();
-            } while (result != null);
+                result = uploads.peek();
+            } while (result != null && stream.canUpload(result.stagingBytes(stream.baseAlignment())));
         } finally { storage.endTextures(); }
         storage.finish();
     }

@@ -2,6 +2,7 @@ package dev.terravista.render.gpu;
 
 import dev.terravista.memory.NativeMemory;
 import dev.terravista.render.DeviceBuffer;
+import dev.terravista.render.UploadStream;
 import dev.terravista.render.tree.MeshBufferStorage;
 import dev.terravista.render.tree.NodeUploadTarget;
 import java.util.List;
@@ -29,6 +30,15 @@ public final class GpuNodeUpdates implements NodeUploadTarget {
             scatter.free();
             throw failure;
         }
+    }
+    @Override public boolean ready(int copies, int bytes, int scatterRecords, int changedSlots) {
+        int alignment = uploads.baseAlignment();
+        long copyBytes = copies == 0 ? 0 : Math.max(
+                (long) bytes + (long) copies * (alignment - 1),
+                UploadStream.alignUp((long) copies * 16, alignment) + UploadStream.alignUp(bytes, alignment));
+        long scatterBytes = UploadStream.alignUp(((long) scatterRecords + 3) / 4 * 80, alignment);
+        long slotBytes = UploadStream.alignUp((long) changedSlots * 4, alignment);
+        return uploads.canUpload(copyBytes + scatterBytes + slotBytes);
     }
     @Override public void copyRanges(long headers, int copies, long data, int bytes, MeshBufferStorage geometry) {
         transfers.copy(headers, copies, data, bytes, geometry);

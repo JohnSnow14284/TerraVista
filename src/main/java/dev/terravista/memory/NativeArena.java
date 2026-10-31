@@ -23,6 +23,9 @@ public final class NativeArena {
     }
     public boolean takeResize() { boolean result = changed; changed = false; return result; }
     public long extent() { return extent; }
+    public long largestFreeRange() {
+        return Math.max(ceiling - extent, gaps.isEmpty() ? 0 : gaps.lastLong() >>> ADDRESS_BITS);
+    }
     public int gapCount() { return gaps.size(); }
     public int largestGap(int index) {
         var cursor = gaps.tailSet(-1).iterator();
