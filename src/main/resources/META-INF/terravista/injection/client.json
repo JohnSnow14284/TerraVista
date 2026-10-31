@@ -32,6 +32,11 @@
     "sodium.SodiumDrawBridge",
     "sodium.VisibleRegionBridge",
     "vitrail.LevelPassViewportBridge",
+    "vitrail.StorageBuffersBridge",
+    "vitrail.DistantVertexBridge",
+    "vitrail.DistantMeshBridge",
+    "vitrail.PackedProgramStorageBridge",
+    "vitrail.PackedDefinesBridge",
     "vulkan.RecordingCommandAccess",
     "vulkan.DeviceLifecycleBridge"
   ],

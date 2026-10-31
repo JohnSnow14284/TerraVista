@@ -1,7 +1,7 @@
 package dev.terravista.model;
 
 import dev.terravista.bootstrap.ModLog;
-import dev.terravista.bootstrap.RuntimeEnvironment;
+import dev.terravista.compat.VitrailPackedPrograms;
 import dev.terravista.config.ClientOptions;
 import dev.terravista.world.BiomePaletteEntry;
 import dev.terravista.world.StatePalette;
@@ -27,7 +27,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** 协调模型捕获、网格发布与设备上传队列。 */
 public final class ModelCatalog {
-    private static final boolean DISTANT_PACK_DATA = RuntimeEnvironment.modLoaded("vitrail");
+    private static final boolean DISTANT_PACK_DATA = VitrailPackedPrograms.ENABLED;
     private record Bake(int blockId, BlockState state) {}
     private final Biome defaultBiome = Minecraft.getInstance().level.registryAccess()
             .lookupOrThrow(Registries.BIOME).getValue(Biomes.PLAINS);

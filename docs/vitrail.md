@@ -22,12 +22,24 @@ from TerraVista's existing buffers. It reuses the ordinary fluid/surface geometr
 camera-relative block coordinates before the pack's matrices and jitter, and supplies unlit colour,
 normal, normalized block/sky light and DH material category. The existing 64-byte model record's
 last 28 bytes hold six face colours and a material category; geometry remains 8 bytes per quad.
-Those fields are baked only when Vitrail is installed. Material category participates in model
+Those fields are baked only when the packed Vitrail adapter is selected. Material category participates in model
 deduplication so two visually identical models with different pack semantics cannot alias.
 
-Shared shader globals and include macros are isolated from the pack's namespace. This adapter is
-not yet installed into the live Vitrail draw path: shader program construction, descriptor binding,
-indirect submission, distant projection/depth and opaque/translucent scheduling remain to connect.
+Shared shader globals and include macros are isolated from the pack's namespace. Optional Mixins
+now install the packed prologue, an empty vertex format and the five storage block declarations
+in Vitrail's real program-loading path. The packed scene block uses std430 with the same offsets
+as the original scene upload. Vitrail's descriptor mechanism can borrow the existing native
+allocations, retaining the full storage range and the scene upload's offset. Host uniform slices
+remain 16 bytes; Vitrail supplies the native SSBO descriptor type, handle and range. Facades never
+map or free the owner's memory, and cannot bind after that owner closes.
+
+The upstream translation cache includes the `TERRAVISTA_PACKED_LOD` ABI define, keeping DH vertex
+attribute translations separate from packed translations. Program adaptation stays off when
+Distant Horizons is installed, so its own vertex buffers are not reinterpreted as TerraVista quads.
+
+Indirect submission, distant projection/depth and opaque/translucent scheduling still need to
+connect the existing frame renderer to this program-loading and binding path. The product does
+not yet advertise `DISTANT_HORIZONS` on TerraVista's behalf.
 
 ## Evidence and remaining requirements
 
@@ -42,10 +54,7 @@ indirect submission, distant projection/depth and opaque/translucent scheduling 
   viewport after Vitrail reopens its real pass. State is allocated lazily per wrapper, not per draw.
   A later upstream implementation of the method takes precedence over this unique method.
 - Contract checks passed for the upstream open descriptor, absent-mod identity, suspension,
-  nesting, closing, registration failure cleanup and viewport state replay. Upstream's original
-  class was compiled against an interface with only the added viewport member removed, then run
-  against the actual current game interface. Viewport state logic was tested separately; this
-  is not evidence that the Mixin transformed a real running Vitrail instance successfully.
+  nesting, closing, registration failure cleanup and viewport state replay.
 - Repeated the pass contract check against the actual built upstream NeoForge JAR; it passed.
 - CPU checks passed for unlit linear colour averaging, transparent cutout holes, translucent
   intrinsic alpha, the 64-byte model layout and material-aware deduplication. The additional work
@@ -59,10 +68,28 @@ indirect submission, distant projection/depth and opaque/translucent scheduling 
   Vulkan SPIR-V. This was an off-game translation probe, not a game or graphics-device draw.
   Inspection of all three compiled modules confirmed no location-based vertex inputs and the
   original 64-byte model stride, with face colours at byte 36 and material at byte 60.
+- An isolated Minecraft 26.3 / NeoForge 26.3.0.76 / Sodium 0.9.3 / Vitrail client started on the
+  native Vulkan device and exited normally. The probe confirmed actual application of the
+  viewport, storage, packed vertex, vertex format, program declaration and cache ABI Mixins.
+  The first cache check exposed an injection targeting the wrong `table` overload; its descriptor
+  is now explicit, and the corrected check passed.
+- In that client, a probe passed real Vulkan allocations through the actual storage Mixins into
+  a capturing RenderPass. Handles, ranges, changed scene offsets and cached Bound identity
+  matched; binding allocated no extra TerraVista GPU buffers and all probe allocations retired.
+  This checks binding/lifetime glue, not Vulkan descriptor pushing or a rendered LOD draw.
+- The same client translated and compiled Complementary's opaque and water vertex programs
+  through the actual packed-prologue Mixin. The probe temporarily enabled the DH preprocessor
+  environment for those translations and restored it afterward. It opened no world; these
+  results do not prove in-world pipeline creation, depth publication, LOD appearance or FPS.
 - Face colour is a flat LOD approximation. Conditional tint masks currently tint the averaged
   face as a whole; material classification covers common vanilla categories and falls back to
   unknown for other blocks. Validate mixed-tint faces and modded materials before release.
-- In-game Mixin application, pass reopening and shader reload remain required.
+- In-world pass reopening and shader reload remain required.
+- Packed quad winding/culling must be validated against the pack pipeline rather than assuming
+  DH's mesh convention. Keep staged GPU resources alive through the later water draw before
+  retiring the frame's upload ranges.
+- The client without Vitrail also started and exited normally: optional Mixins were skipped,
+  packed adaptation remained disabled and the raw pass was returned unchanged. No world opened.
 - LOD colour, material and depth must reach Vitrail's shader programs at the correct opaque /
   translucent stages. Merely compositing TerraVista's vanilla-lit colour onto the main target
   does not satisfy this requirement. Current bridge changes alone do not implement that path.

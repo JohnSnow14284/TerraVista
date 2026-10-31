@@ -1,4 +1,8 @@
+#ifdef TERRAVISTA_PACK_VERTEX
+layout(binding = 0, std430) readonly restrict buffer SceneUniform {
+#else
 layout(binding = 0, std140) uniform SceneUniform {
+#endif
     mat4 MVP;
     ivec3 baseSectionPos;
     uint frameId;
