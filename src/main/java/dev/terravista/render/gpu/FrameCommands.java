@@ -28,8 +28,13 @@ public final class FrameCommands {
         borrowed = command;
     }
     public void endFrame() {
+        endFrame(false);
+    }
+
+    /** Defer retirement while a later shader pass still reads this frame's uploads. */
+    public void endFrame(boolean deferRetirement) {
         if (borrowed == null) throw new IllegalStateException("TerraVista Render: No frame begun");
-        if (work) {
+        if (work && !deferRetirement) {
             retirement.stamp(borrowed);
             work = false;
         }

@@ -10,6 +10,7 @@ final class TreeRenderSync {
     private final SectionGeometryStorage geometry;
     private final NodeUploadTarget uploads;
     private IntConsumer rootAdded, rootRemoved;
+    private TreeDelta pending;
     int lastNode;
     long usedBytes;
 
@@ -23,8 +24,17 @@ final class TreeRenderSync {
     void rootCallbacks(IntConsumer added, IntConsumer removed) { rootAdded = added; rootRemoved = removed; }
     void tick(DeviceBuffer nodes, VisibilityEviction cleaner) {
         if (inbox.failure != null) throw new RuntimeException(inbox.failure);
-        var result = publications.takePublished();
+        var result = pending != null ? pending : publications.takePublished();
         if (result == null) return;
+        var copy = result.geometry;
+        int count = copy.destinations.size();
+        int bytes = (int) copy.arena.extent() * 8;
+        // Keep geometry, root callbacks and metadata in the same publication when GPU uploads wait.
+        if (!uploads.ready(count, bytes, result.scatterLocations.size(), result.cleaner.size())) {
+            pending = result;
+            return;
+        }
+        pending = null;
         if (!result.roots.isEmpty()) {
             var iterator = result.roots.intIterator();
             while (iterator.hasNext()) {
@@ -35,11 +45,8 @@ final class TreeRenderSync {
         }
         var store = (MeshBufferStorage) geometry;
         store.size(result.sections);
-        var copy = result.geometry;
         if (!copy.destinations.isEmpty()) {
             store.ensureElement(copy.maxElement);
-            int count = copy.destinations.size();
-            int bytes = (int) copy.arena.extent() * 8;
             uploads.copyRanges(copy.headers.address, count, copy.data.address, bytes, store);
         }
         if (!result.scatterLocations.isEmpty())
@@ -48,5 +55,11 @@ final class TreeRenderSync {
         lastNode = result.lastNode;
         usedBytes = result.usedBytes;
         publications.recycle(result);
+    }
+
+    boolean hasPending() { return pending != null; }
+
+    void close() {
+        if (pending != null) { pending.close(); pending = null; }
     }
 }

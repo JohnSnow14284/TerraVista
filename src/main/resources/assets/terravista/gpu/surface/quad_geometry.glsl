@@ -104,9 +104,15 @@ vec4 getQuadCornerPos(in QuadData quad, uint cornerId) {
     point.y = quad.cellBottom + quad.surfaceOffset + (point.y - quad.cellBottom) * quad.surfaceScale;
 
     if (worldCurveData.x != 0.0) point = curvePoint(point - cameraSubPos, worldCurveData) + cameraSubPos;
+#ifdef TERRAVISTA_PACK_VERTEX
+    // Pack vertex programs apply their own model-view/projection and temporal jitter.
+    // Decode the same packed geometry, including fluid corners, in camera-relative blocks.
+    return vec4(point - cameraSubPos, 1.0);
+#else
     vec4 pos = MVP * vec4(point, 1.0f);
     pos.xy += taaOffset*pos.w;
     return pos;
+#endif
 }
 
 vec2 getCornerUV(const in QuadData quad, uint cornerId) {

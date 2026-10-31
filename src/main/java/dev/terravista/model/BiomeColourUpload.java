@@ -1,6 +1,7 @@
 package dev.terravista.model;
 
 import dev.terravista.memory.NativeBuffer;
+import dev.terravista.render.UploadStream;
 
 /** 持有生物群系颜色矩阵与模型索引，等待排队上传。 */
 final class BiomeColourUpload implements ModelUpload {
@@ -9,6 +10,10 @@ final class BiomeColourUpload implements ModelUpload {
     BiomeColourUpload(int biomes, int models) {
         colours = new NativeBuffer(biomes * models * 4);
         modelIndices = new NativeBuffer(models * 8);
+    }
+    @Override public long stagingBytes(int alignment) {
+        return UploadStream.alignUp(colours.bytes, alignment)
+                + modelIndices.bytes / 8 * alignment;
     }
     @Override public void upload(ModelStore store) { store.uploadBiomes(colours, modelIndices); }
     @Override public void free() {

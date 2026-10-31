@@ -18,6 +18,8 @@ final class UploadStaging {
     private final Deque<Long> retiredBanks = new ArrayDeque<>();
     private int liveBanks = 1;
     private static final int MAX_LIVE_BANKS = 4;
+    private static final int FRAME_RESERVE = 1 << 20;
+    private static final int MAX_BANK_BYTES = 1 << 28;
     private final Deque<Frame> frames = new ArrayDeque<>();
     private final LongArrayList allocations = new LongArrayList();
     private long current = -1;
@@ -38,8 +40,27 @@ final class UploadStaging {
                 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true);
     }
     long handle() { return buffer.buffer; }
+    GpuBuffer owner() { return buffer; }
     long pointer() { return pointer; }
     void resetRange() { current = -1; offset = 0; }
+
+    /** Admit a complete bulk batch while leaving space for the rest of the current frame. */
+    boolean canUpload(long bytes, Runnable publish) {
+        long required = bytes + FRAME_RESERVE;
+        if (bytes < 0 || required < bytes || required > MAX_BANK_BYTES)
+            throw new IllegalArgumentException("TerraVista Render: Upload batch exceeds bounded staging capacity: " + bytes);
+        if (required <= buffer.size()
+                && (arena.largestFreeRange() >= required || liveBanks < MAX_LIVE_BANKS)) return true;
+        // Poll only on the pressured path; ordinary model uploads do not add native event queries.
+        commands.retirement().poll();
+        if (required > buffer.size()) {
+            if (liveBanks == MAX_LIVE_BANKS) return false;
+            long capacity = Math.min(MAX_BANK_BYTES, Long.highestOneBit(required - 1) << 1);
+            rotate(publish, capacity);
+            return true;
+        }
+        return arena.largestFreeRange() >= required || liveBanks < MAX_LIVE_BANKS;
+    }
 
     long allocateAligned(int bytes, Runnable publish) {
         if (bytes > buffer.size()) throw new IllegalArgumentException();
@@ -74,8 +95,11 @@ final class UploadStaging {
         return address;
     }
     private void rotate(Runnable publish) {
+        rotate(publish, buffer.size());
+    }
+    private void rotate(Runnable publish, long capacity) {
         publish.run();
-        var next = createBuffer(buffer.size());
+        var next = createBuffer(capacity);
         long nextPointer;
         try { nextPointer = next.map(); }
         catch (RuntimeException | Error failure) { next.free(); throw failure; }

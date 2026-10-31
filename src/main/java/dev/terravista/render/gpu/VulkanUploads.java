@@ -8,6 +8,7 @@ public class VulkanUploads extends UploadStream {
     private final FrameCommands commands;
     private final UploadCopies copies = new UploadCopies();
     private final UploadStaging staging;
+    private final Runnable publish = this::tick;
 
     public VulkanUploads(FrameCommands commands, long bytes) {
         this.commands = commands;
@@ -15,6 +16,8 @@ public class VulkanUploads extends UploadStream {
         commands.retirement().addListener(this::retired);
     }
     public long stagingBuffer() { return staging.handle(); }
+    GpuBuffer stagingOwner() { return staging.owner(); }
+    @Override public boolean canUpload(long bytes) { return staging.canUpload(bytes, publish); }
     @Override public long upload(DeviceBuffer target, long destinationOffset, long bytes) {
         long address = rawUploadAddress((int) bytes);
         copies.add((GpuBuffer) target, address, destinationOffset, bytes);
@@ -22,7 +25,7 @@ public class VulkanUploads extends UploadStream {
     }
     @Override public long rawUploadAddress(int bytes) {
         if (bytes < 0) throw new IllegalStateException("TerraVista Render: Negative size");
-        return staging.allocateAligned(alignAllocation(bytes), this::tick);
+        return staging.allocateAligned(alignAllocation(bytes), publish);
     }
     @Override public void commit() {
         if (copies.isEmpty()) { staging.resetRange(); return; }

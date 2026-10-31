@@ -102,7 +102,7 @@ jar {
         if (path == 'META-INF/jarjar/rocksdbjni-10.2.1.jar'
                 && file != filterRocksNatives.get().archiveFile.get().asFile) exclude()
     }
-    from('LICENSE.md') {
+    from('LICENSE') {
         rename { '许可证.txt' }
     }
     preserveFileTimestamps = false

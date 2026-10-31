@@ -1,7 +1,9 @@
 package dev.terravista.model;
 
 import dev.terravista.bootstrap.ModLog;
+import dev.terravista.compat.VitrailPackedPrograms;
 import dev.terravista.config.ClientOptions;
+import dev.terravista.render.UploadStream;
 import dev.terravista.world.BiomePaletteEntry;
 import dev.terravista.world.StatePalette;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -26,6 +28,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** 协调模型捕获、网格发布与设备上传队列。 */
 public final class ModelCatalog {
+    private static final boolean DISTANT_PACK_DATA = VitrailPackedPrograms.ENABLED;
     private record Bake(int blockId, BlockState state) {}
     private final Biome defaultBiome = Minecraft.getInstance().level.registryAccess()
             .lookupOrThrow(Registries.BIOME).getValue(Biomes.PLAINS);
@@ -143,8 +146,9 @@ public final class ModelCatalog {
         if (sources != null) biomeDependent = ModelTinting.biomeDependent(sources, state);
         int foliage = state.is(BlockTags.LEAVES) ? foliageStyle.ordinal() + 1 : 0;
         boolean waterDatum = fluid && state.getFluidState().is(FluidTags.WATER) && state.getFluidState().isSource();
+        int distantMaterial = DISTANT_PACK_DATA ? DistantModelData.material(state) : 0;
         var key = new ModelDeduplication.Key(faces, fluidModel, biomeDependent || sources == null
-                ? -1 : ModelTinting.constant(sources, state, defaultBiome) | 0xFF000000, foliage, waterDatum, crossPlant);
+                ? -1 : ModelTinting.constant(sources, state, defaultBiome) | 0xFF000000, foliage, waterDatum, crossPlant, distantMaterial);
         int modelId = models.find(key);
         if (modelId != -1) {
             blockModels[blockId] = modelId;
@@ -183,6 +187,7 @@ public final class ModelCatalog {
             else colours.attach(result, modelId, state, sources);
             MemoryUtil.memPutInt(result.model.address + 32,
                     customIds != null && customIds.containsKey(state) ? customIds.getInt(state) : 0);
+            if (DISTANT_PACK_DATA) DistantModelData.write(result.model.address, faces, distantMaterial);
             TextureMipmaps.write(darkened, faces, result.texture);
             blockModels[blockId] = modelId;
             retire(blockId, "TerraVista Models: Completed bake has no pending block-state request");
@@ -216,15 +221,20 @@ public final class ModelCatalog {
     }
     public void upload() {
         boolean blended = blendedTints.upload(storage);
-        var result = uploads.poll();
-        if (result == null) { if (blended) storage.finish(); return; }
+        var stream = UploadStream.current();
+        var result = uploads.peek();
+        if (result == null || !stream.canUpload(result.stagingBytes(stream.baseAlignment()))) {
+            if (blended) storage.finish();
+            return;
+        }
         storage.beginTextures();
         try {
             do {
+                result = uploads.poll();
                 try { result.upload(storage); }
                 finally { result.free(); }
-                result = uploads.poll();
-            } while (result != null);
+                result = uploads.peek();
+            } while (result != null && stream.canUpload(result.stagingBytes(stream.baseAlignment())));
         } finally { storage.endTextures(); }
         storage.finish();
     }

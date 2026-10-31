@@ -68,6 +68,7 @@ public final class TreePipeline {
             }
         } catch (InterruptedException interrupted) { throw new RuntimeException(interrupted); }
         inbox.discardQueued();
+        render.close();
         publications.close();
         uploads.close();
     }
@@ -77,7 +78,7 @@ public final class TreePipeline {
     public void removal(NativeBuffer batch) { inbox.removal(batch); }
     public void addRoot(long position) { inbox.addRoot(position); }
     public void removeRoot(long position) { inbox.removeRoot(position); }
-    public boolean hasWork() { return inbox.work.get() != 0 || publications.hasPublished(); }
+    public boolean hasWork() { return inbox.work.get() != 0 || publications.hasPublished() || render.hasPending(); }
     public int lastNode() { return render.lastNode; }
     public long usedBytes() { return render.usedBytes; }
     public long geometryCapacity() { return geometryCapacity; }

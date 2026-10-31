@@ -30,6 +30,9 @@ public final class RenderSession {
 
     public boolean hasFrameResources() { return frames != null; }
 
+    public void translucent(MinecraftDeviceAdapter adapter, boolean draw) { frames.translucent(adapter, draw); }
+    public void composite(MinecraftDeviceAdapter adapter, boolean draw) { frames.composite(adapter, draw); }
+
     public void distance(float sections) { frames.distance(sections); }
     public void debug(List<String> lines) { frames.debug(lines); }
     public void close() { frames.close(); }

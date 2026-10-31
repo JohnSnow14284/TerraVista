@@ -3,7 +3,12 @@ struct BlockModel {
     uint flagsA;
     uint colourTint;
     uint customId;
+#ifdef TERRAVISTA_PACK_VERTEX
+    uint distantColour[6];
+    uint distantMaterial;
+#else
     uint _pad[7];
+#endif
 };
 
 float extractFaceIndentation(uint faceData) {
