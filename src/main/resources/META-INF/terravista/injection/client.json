@@ -37,6 +37,7 @@
     "vitrail.DistantMeshBridge",
     "vitrail.PackedProgramStorageBridge",
     "vitrail.PackedDefinesBridge",
+    "vitrail.EclipseSourceBridge",
     "vitrail.DistantDrawBridge",
     "vitrail.IndirectCountBridge",
     "vitrail.IndirectCountFeatureBridge",

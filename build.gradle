@@ -8,6 +8,30 @@ base { archivesName = project.archives_base_name }
 
 def targetJavaVersion = 25
 java { toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion) }
+sourceSets {
+    verification {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+def verifyEclipseAdapter = tasks.register('verifyEclipseAdapter', JavaExec) {
+    group = 'verification'
+    description = 'Verifies Eclipse pack ownership, shader entry routing and preprocessor scopes.'
+    classpath = sourceSets.verification.runtimeClasspath
+    mainClass = 'dev.terravista.compat.EclipseAdapterVerification'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(targetJavaVersion) }
+}
+tasks.named('check') { dependsOn verifyEclipseAdapter }
+tasks.register('exportEclipsePatch', JavaExec) {
+    group = 'distribution'
+    description = 'Exports a separate Eclipse TV Vulkan ZIP from -PeclipseSource and -PeclipseOutput.'
+    classpath = sourceSets.verification.runtimeClasspath
+    mainClass = 'dev.terravista.compat.EclipsePatchExport'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(targetJavaVersion) }
+    doFirst {
+        args = [providers.gradleProperty('eclipseSource').get(), providers.gradleProperty('eclipseOutput').get()]
+    }
+}
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = targetJavaVersion

@@ -18,6 +18,7 @@ import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.lwjgl.system.MemoryUtil;
@@ -146,7 +147,9 @@ public final class ModelCatalog {
         if (sources != null) biomeDependent = ModelTinting.biomeDependent(sources, state);
         int foliage = state.is(BlockTags.LEAVES) ? foliageStyle.ordinal() + 1 : 0;
         boolean waterDatum = fluid && state.getFluidState().is(FluidTags.WATER) && state.getFluidState().isSource();
-        int distantMaterial = DISTANT_PACK_DATA ? DistantModelData.material(state) : 0;
+        // Keep states with different pack materials distinct, including after a pack switch.
+        int packState = DISTANT_PACK_DATA ? Block.BLOCK_STATE_REGISTRY.getId(state) : 0;
+        int distantMaterial = DISTANT_PACK_DATA ? DistantModelData.material(state) | (packState << 8) : 0;
         var key = new ModelDeduplication.Key(faces, fluidModel, biomeDependent || sources == null
                 ? -1 : ModelTinting.constant(sources, state, defaultBiome) | 0xFF000000, foliage, waterDatum, crossPlant, distantMaterial);
         int modelId = models.find(key);
@@ -186,7 +189,7 @@ public final class ModelCatalog {
             else if (!biomeDependent) MemoryUtil.memPutInt(result.model.address + 28, key.tintColour());
             else colours.attach(result, modelId, state, sources);
             MemoryUtil.memPutInt(result.model.address + 32,
-                    customIds != null && customIds.containsKey(state) ? customIds.getInt(state) : 0);
+                    DISTANT_PACK_DATA ? packState : customIds != null && customIds.containsKey(state) ? customIds.getInt(state) : 0);
             if (DISTANT_PACK_DATA) DistantModelData.write(result.model.address, faces, distantMaterial);
             TextureMipmaps.write(darkened, faces, result.texture);
             blockModels[blockId] = modelId;

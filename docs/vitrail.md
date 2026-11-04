@@ -7,15 +7,20 @@ The rendering correspondence is deliberately split by graphics backend:
 | OpenGL | Voxy | Iris |
 | Vulkan | TerraVista | Vitrail |
 
-This branch implements the Vulkan row in TerraVista. The Vitrail repository and its shader-pack
-source are not patched; TerraVista adapts its own LOD buffers, indirect commands, depth contract,
-and frame lifetime to Vitrail's existing distant passes.
+This branch implements two layers of the Vulkan row:
+
+1. TerraVista adapts its LOD buffers, indirect commands, depth contract and frame lifetime to
+   Vitrail's existing distant passes. Vitrail's source and binary remain unchanged.
+2. A pack supplies LOD shading against that contract. Existing DH-compatible programs can use the
+   generic adapter; Eclipse has a TV-specific patch for its material IDs, lighting and water path.
+   See [Eclipse-TV](eclipse-tv.md) for the automatic bridge and standalone patch export.
 
 Status: implementation branch. Complementary and Bliss distant programs render packed LODs in real
 Vulkan worlds. A legacy pack without distant programs also renders through the basic-colour
 fallback. Shader toggles, scaling, resource reloads and staging-bank rotation passed on the RTX
 4070 Ti SUPER; performance acceptance, wider pack/settings coverage and world-transition coverage
-remain incomplete.
+remain incomplete. Eclipse's TV patch additionally passed three-dimension transitions and a
+bounded nine-position streaming route with real distant depth beyond the near-world range.
 
 Reference: https://github.com/avpbynf/Vitrail-Shaders
 
@@ -37,8 +42,8 @@ normalized block/sky light and material. Pack matrices and temporal jitter are a
 Shader globals and include macros are isolated from the pack's namespace.
 
 The pack pipeline declares **no vertex binding**. An empty vertex format still creates a slot and
-fails current host validation; Vitrail's null-format path omits that slot entirely. Five named SSBO
-bindings borrow the existing allocations. Uniform placeholders are 16 bytes while Vitrail supplies
+fails current host validation; Vitrail's null-format path omits that slot entirely. Six named SSBO
+bindings expose the existing allocations plus a pack material lookup. Uniform placeholders are 16 bytes while Vitrail supplies
 the actual native descriptor range and retains the staging offset. Borrowed facades neither map
 nor free their owners, and reject use after owner release.
 
@@ -48,7 +53,11 @@ GPU-generated indexed indirect batches after the pack binds. Water runs after th
 stage. Vitrail owns its colour attachments, distant depth, near-world water seeding and depth
 publication. The reversed-Z projection row matches TerraVista's clip planes and publishes render
 distance in blocks. The integration advertises the DH shader contract and separates cached packed
-translations with `TERRAVISTA_PACKED_LOD` ABI 2.
+translations with `TERRAVISTA_PACKED_LOD` ABI 3. The model custom-ID word stores a stable block-state
+registry index; a small table maps it to the current pack's `block.properties` IDs. That table is
+refreshed only when Vitrail changes its material generation. Packed model deduplication retains
+state identity so a pack switch cannot inherit a previous state's material. This can increase the
+number of distinct models; large modded registries still need capacity/performance testing.
 
 The distant fragment wrapper compares against the actual main depth image in the matching depth
 window, so near terrain can occlude LODs without being published as distant depth. Its sampler is
@@ -144,13 +153,23 @@ Those LODs do not enter the pack's deferred lighting, reflections or distant-sha
 - The original test-world files retained their recorded hashes. Probes, screenshots and logs live
   outside the repository under `D:/MCMod/项目资料/TerraVista/vitrail-adaptation/`. GPU depth readback
   enabled COPY_SRC only in the probe; it is not a product texture or copy cost.
+- After adding the sixth binding, Complementary's full lifecycle passed again: 11,424 counted
+  indirect calls, zero indirect fallbacks, 192,993 non-clear distant-depth pixels after resource
+  reload, and no mesh failures. See `lifecycle-01/abi3-complementary-01.log`.
+- An intentionally invalid Eclipse water fragment was refused after opaque had drawn. The adapter
+  recognizes Vitrail's `dropped:prepare:distant_water` refusal and switches to basic fallback.
+  A paired GPU colour control changed zero pixels without the draw, versus 100,155 / 81,395 /
+  144,802 pixels with it at initial / scaled / reloaded sizes. Toggles and resource reload passed;
+  there were two opaque submissions and zero water submissions before refusal. The earlier
+  `#error` injection was ignored by the host preprocessor and is not used as failure evidence.
 
 ## Remaining acceptance
 
 - Repeat matched frame-time comparisons with order controls, then measure heavier world streaming
   and peak VRAM. The initial uncontrolled 30 FPS endpoint is superseded by the first uncapped pair;
   neither a single static fixture nor its absolute FPS proves sustained performance acceptance.
-- Exercise more supported pack settings, world transitions and sustained travel. The isolated fixture
+- Exercise more supported pack settings and longer travel in heavier worlds. Eclipse's three vanilla
+  dimensions and bounded travel passed; broader transition/streaming coverage remains. The isolated fixture
   disabled NeoForge's early loading window after an upstream OpenGL handoff failure; ordinary launcher behavior still needs checking.
 - Measure sustained upload pressure and peak staging/VRAM use in a heavier world. The bounded
   bank policy now defers bulk producers; bypassing that policy with unguarded low-level raw

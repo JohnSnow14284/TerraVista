@@ -12,9 +12,9 @@ public final class VitrailPackedPrograms {
     // DH owns the upstream distant family when present. Do not reinterpret its vertex buffers.
     public static final boolean ENABLED = RuntimeEnvironment.modLoaded("vitrail")
             && !RuntimeEnvironment.modLoaded("distanthorizons");
-    public static final String ABI = "2";
+    public static final String ABI = "3";
     private static final List<String> BLOCKS = List.of("TerraVistaScene", "TerraVistaQuads",
-            "TerraVistaModels", "TerraVistaColours", "TerraVistaPositions");
+            "TerraVistaModels", "TerraVistaColours", "TerraVistaPositions", "TerraVistaBlockIds");
 
     public static boolean distant(Object loaded) {
         try {

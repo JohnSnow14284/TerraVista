@@ -4,4 +4,6 @@
 
 该项目由JohnSnow编写，但在一定程度上汲取了voxy的经验。
 
-当前处于实验性阶段，当前不支持任何光影及光影加载器，未来考虑支持。
+当前处于实验性阶段。本分支支持通过 Vitrail 加载 Vulkan 光影和 TerraVista LOD；已验证
+Complementary、Bliss，以及 Eclipse 的 TV 专属适配。接入方式、版本和验证边界见
+[Vitrail 接入说明](docs/vitrail.md) 和 [Eclipse-TV 补丁说明](docs/eclipse-tv.md)。

@@ -38,6 +38,12 @@ struct TerraVistaDistantVertex {
     uint material;
 };
 
+layout(std430) readonly restrict buffer TerraVistaBlockIds { int terravistaBlockIds[]; };
+vec4 terravistaBaseColour;
+vec4 terravistaTint;
+uint terravistaCustomId;
+uint terravistaFace;
+
 TerraVistaDistantVertex terravistaDistantVertex() {
     Quad raw = quadData[uint(gl_VertexIndex) >> 2];
     uint face = extractFace(raw);
@@ -51,18 +57,23 @@ TerraVistaDistantVertex terravistaDistantVertex() {
     if (face == 0u || face == 3u || face == 5u) corner ^= 1u;
     vertex.position = getQuadCornerPos(quad, corner);
     vertex.colour = unpackUnorm4x8(model.distantColour[face]);
+    terravistaBaseColour = vertex.colour;
+    terravistaTint = vec4(1.0);
+    terravistaCustomId = uint(terravistaBlockIds[model.customId]);
+    terravistaFace = face;
     uint tint = model.colourTint;
     if (modelHasBiomeLUT(model)) {
         tint = usesBlendedTint(raw) ? colourData[65536u + extractBiomeId(raw)] | 0xff000000u
                 : colourData[tint + extractBiomeId(raw)];
     }
     if (faceTintState(model.faceData[face]) != 0u && tint != uint(-1)) {
-        vertex.colour.rgb *= vec3((tint >> 16) & 255u, (tint >> 8) & 255u, tint & 255u) / 255.0;
+        terravistaTint.rgb = vec3((tint >> 16) & 255u, (tint >> 8) & 255u, tint & 255u) / 255.0;
+        vertex.colour.rgb *= terravistaTint.rgb;
     }
     const vec3 normals[6] = vec3[6](vec3(0,-1,0), vec3(0,1,0), vec3(0,0,-1),
             vec3(0,0,1), vec3(-1,0,0), vec3(1,0,0));
     vertex.normal = normals[face];
     vertex.light = getLightmapUv(extractLightId(raw));
-    vertex.material = model.distantMaterial;
+    vertex.material = model.distantMaterial & 255u;
     return vertex;
 }

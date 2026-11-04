@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 public final class VitrailBuffers {
     public enum Slot {
         SCENE("TerraVistaScene"), QUADS("TerraVistaQuads"), MODELS("TerraVistaModels"),
-        COLOURS("TerraVistaColours"), POSITIONS("TerraVistaPositions");
+        COLOURS("TerraVistaColours"), POSITIONS("TerraVistaPositions"), BLOCK_IDS("TerraVistaBlockIds");
         public final String block;
         Slot(String block) { this.block = block; }
     }
@@ -29,6 +29,7 @@ public final class VitrailBuffers {
             case "TerraVistaModels" -> Slot.MODELS;
             case "TerraVistaColours" -> Slot.COLOURS;
             case "TerraVistaPositions" -> Slot.POSITIONS;
+            case "TerraVistaBlockIds" -> Slot.BLOCK_IDS;
             default -> null;
         };
     }

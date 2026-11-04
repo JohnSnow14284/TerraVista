@@ -37,7 +37,8 @@ public final class VitrailLods {
             Set<?> refused = (Set<?>) Api.REFUSED.invoke(renderer);
             return (boolean) Api.BROKEN.invoke(renderer) || !programs.containsKey("distant")
                     || !programs.containsKey("distant_water") || refused.contains("prepare:distant")
-                    || refused.contains("prepare:distant_water") ? Mode.FALLBACK : Mode.PACKED;
+                    || refused.contains("prepare:distant_water")
+                    || refused.contains("dropped:prepare:distant_water") ? Mode.FALLBACK : Mode.PACKED;
         } catch (Throwable failure) { throw failure(failure); }
     }
 
@@ -69,7 +70,12 @@ public final class VitrailLods {
             // skips DH's corner mapping. No stand-in DH meshes or per-section CPU iteration.
             boolean result = (boolean) Api.RECORD.invoke(renderer, RenderSystem.getDevice(),
                     Minecraft.getInstance(), water ? Api.WATER : Api.OPAQUE, List.of());
-            if (result && !emitted) throw new IllegalStateException("TerraVista: Vitrail draw hook did not run");
+            if (result && !emitted) {
+                // Upstream also returns true when a just-refused program keeps DH's own draw.
+                // We have no DH mesh: select our basic path on the next frame instead.
+                if (mode() == Mode.FALLBACK) return false;
+                throw new IllegalStateException("TerraVista: Vitrail draw hook did not run");
+            }
             return result;
         } catch (Throwable failure) {
             if (current != null) {

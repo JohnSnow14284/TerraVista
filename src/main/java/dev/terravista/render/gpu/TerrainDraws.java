@@ -28,6 +28,7 @@ public final class TerrainDraws implements VitrailLods.Draw {
     private VitrailIndirect packedIndirect;
     private VulkanViewTargets packedView;
     private boolean packedWater;
+    private PackMaterialTable packMaterials;
 
     public TerrainDraws(FrameCommands commands, VulkanUploads uploads, VulkanReadbacks readbacks,
                         DepthConvention convention, GpuGeometryTable geometry, GpuModelTable models) {
@@ -77,7 +78,9 @@ public final class TerrainDraws implements VitrailLods.Draw {
         if (packedBindings == null) {
             packedBindings = new VitrailBuffers();
             packedIndirect = new VitrailIndirect();
+            packMaterials = new PackMaterialTable(commands);
         }
+        packMaterials.refresh(uploads);
         commands.computeToDraw();
         scene.ensureLive(uploads, view);
         scene.bind(packedBindings);
@@ -85,6 +88,7 @@ public final class TerrainDraws implements VitrailLods.Draw {
         packedBindings.set(VitrailBuffers.Slot.MODELS, models.models, 0, models.models.sizeBytes());
         packedBindings.set(VitrailBuffers.Slot.COLOURS, models.colours, 0, models.colours.sizeBytes());
         packedBindings.set(VitrailBuffers.Slot.POSITIONS, view.positionScratch, 0, view.positionScratch.sizeBytes());
+        packedBindings.set(VitrailBuffers.Slot.BLOCK_IDS, packMaterials.buffer, 0, packMaterials.buffer.sizeBytes());
         packedView = view;
         packedWater = water;
         packedBindings.activate();
@@ -162,6 +166,7 @@ public final class TerrainDraws implements VitrailLods.Draw {
     }
 
     public void close() {
+        if (packMaterials != null) packMaterials.buffer.free();
         generation.close();
         pipelines.close();
         materials.close();
